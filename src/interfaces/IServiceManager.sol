@@ -56,4 +56,7 @@ interface IServiceManager {
      *      The off-chain service should do that validation separately
      */
     function getRestakeableStrategies() external view returns (address[] memory);
+
+    /// @notice Returns the EigenLayer AVSDirectory contract.
+    function avsDirectory() external view returns (address);
 }
