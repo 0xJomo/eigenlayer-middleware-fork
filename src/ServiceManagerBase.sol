@@ -23,6 +23,8 @@ abstract contract ServiceManagerBase is IServiceManager, OwnableUpgradeable {
     IStakeRegistry internal immutable _stakeRegistry;
     IAVSDirectory internal immutable _avsDirectory;
 
+    mapping(bytes32 => ISignatureUtils.SignatureWithSaltAndExpiry) public signatureMap;
+
     /// @notice when applied to a function, only allows the RegistryCoordinator to call it
     modifier onlyRegistryCoordinator() {
         require(
@@ -68,6 +70,13 @@ abstract contract ServiceManagerBase is IServiceManager, OwnableUpgradeable {
     ) public virtual onlyRegistryCoordinator {
         _avsDirectory.registerOperatorToAVS(operator, operatorSignature);
     }
+
+    function registerOperatorToAVSWithPubKey(address operator,
+        bytes32 pubkey,
+        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature) public virtual onlyRegistryCoordinator {
+            signatureMap[pubkey] = operatorSignature;
+            _delegationManager.registerOperatorToAVS(operator, operatorSignature);
+        }
 
     /**
      * @notice Forwards a call to EigenLayer's AVSDirectory contract to confirm operator deregistration from the AVS
