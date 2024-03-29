@@ -11,6 +11,8 @@ import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 
+import {BN254} from "../libraries/BN254.sol";
+
 /**
  * @title Minimal implementation of a ServiceManager-type contract.
  * This contract can inherited from or simply used as a point-of-reference.
@@ -23,7 +25,7 @@ contract ServiceManagerBase is IServiceManager, OwnableUpgradeable {
     IDelegationManager internal immutable _delegationManager;
     IStakeRegistry internal immutable _stakeRegistry;
 
-    mapping(bytes32 => ISignatureUtils.SignatureWithSaltAndExpiry) public signatureMap;
+    mapping(PubKey => ISignatureUtils.SignatureWithSaltAndExpiry) public signatureMap;
 
     /// @notice when applied to a function, only allows the RegistryCoordinator to call it
     modifier onlyRegistryCoordinator() {
@@ -71,10 +73,15 @@ contract ServiceManagerBase is IServiceManager, OwnableUpgradeable {
         _delegationManager.registerOperatorToAVS(operator, operatorSignature);
     }
 
+    struct PubKey {
+        BN254.G1Point pubkeyG1,
+        BN254.G2Point pubkeyG2,
+    }
+
     function registerOperatorToAVSWithPubKey(address operator,
-        bytes32 pubkey,
+        BN254.G1Point pubkeyG1, BN254.G2Point pubkeyG2,
         ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature) public virtual onlyRegistryCoordinator {
-            signatureMap[pubkey] = operatorSignature;
+            signatureMap[PubKey(pubkeyG1, pubkeyG2)] = operatorSignature;
             _delegationManager.registerOperatorToAVS(operator, operatorSignature);
         }
 
