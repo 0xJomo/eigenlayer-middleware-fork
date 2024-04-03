@@ -23,9 +23,6 @@ abstract contract ServiceManagerBase is IServiceManager, OwnableUpgradeable {
     IStakeRegistry internal immutable _stakeRegistry;
     IAVSDirectory internal immutable _avsDirectory;
 
-    mapping(PubKey => ISignatureUtils.SignatureWithSaltAndExpiry)
-        public signatureMap;
-
     /// @notice when applied to a function, only allows the RegistryCoordinator to call it
     modifier onlyRegistryCoordinator() {
         require(
