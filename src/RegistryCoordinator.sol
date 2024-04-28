@@ -680,6 +680,7 @@ contract RegistryCoordinator is
         uint8 prevQuorumCount = quorumCount;
         require(prevQuorumCount < MAX_QUORUM_COUNT, "RegistryCoordinator.createQuorum: max quorums reached");
         quorumCount = prevQuorumCount + 1;
+        emit QuorumCountUpdated(quorumCount);
         
         // The previous count is the new quorum's number
         uint8 quorumNumber = prevQuorumCount;
@@ -725,6 +726,7 @@ contract RegistryCoordinator is
                 }));
             }
         }
+        emit OperatorQuorumBitmapUpdated(operatorId, newBitmap);
     }
 
     /// @notice Get the most recent bitmap for the operator, returning an empty bitmap if
