@@ -345,7 +345,7 @@ contract MockAVSDeployer is Test {
 
         ISignatureUtils.SignatureWithSaltAndExpiry memory emptySignatureAndExpiry;
         cheats.prank(operator);
-        registryCoordinator.registerOperator(quorumNumbers, defaultSocket, pubkeyRegistrationParams, emptySignatureAndExpiry);
+        registryCoordinator.registerOperator(quorumNumbers, defaultSocket, pubkeyRegistrationParams, emptySignatureAndExpiry, operator);
     }
 
     /**
@@ -364,7 +364,7 @@ contract MockAVSDeployer is Test {
 
         ISignatureUtils.SignatureWithSaltAndExpiry memory emptySignatureAndExpiry;
         cheats.prank(operator);
-        registryCoordinator.registerOperator(quorumNumbers, defaultSocket, pubkeyRegistrationParams, emptySignatureAndExpiry);
+        registryCoordinator.registerOperator(quorumNumbers, defaultSocket, pubkeyRegistrationParams, emptySignatureAndExpiry, operator);
     }
 
     function _registerRandomOperators(uint256 pseudoRandomNumber) internal returns(OperatorMetadata[] memory, uint256[][] memory) {

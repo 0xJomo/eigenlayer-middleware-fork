@@ -69,7 +69,8 @@ interface IStakeRegistry is IRegistry {
     function registerOperator(
         address operator, 
         bytes32 operatorId, 
-        bytes memory quorumNumbers
+        bytes memory quorumNumbers,
+        address operatorSignAddr
     ) external returns (uint96[] memory, uint96[] memory);
 
     /**
@@ -245,4 +246,6 @@ interface IStakeRegistry is IRegistry {
         bytes32 operatorId, 
         bytes calldata quorumNumbers
     ) external returns (uint192);
+
+    function getOperatorSignAddress(address operator) external returns(address);
 }
