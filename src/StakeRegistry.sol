@@ -205,6 +205,7 @@ contract StakeRegistry is StakeRegistryStorage {
             nextUpdateBlockNumber: 0,
             stake: 0
         }));
+        emit QuorumTotalStakeUpdate(quorumNumber, 0);
     }
 
     function setMinimumStakeForQuorum(
@@ -391,6 +392,8 @@ contract StakeRegistry is StakeRegistryStorage {
                 stake: newStake
             }));
         }
+
+        emit QuorumTotalStakeUpdate(quorumNumber, newStake);
 
         return newStake;
     }
