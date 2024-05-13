@@ -70,7 +70,11 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         bytes memory quorumNumbers
     ) public virtual onlyRegistryCoordinator {
         // Get the operator's pubkey. Reverts if they have not registered a key
-        (BN254.G1Point memory pubkey, ) = getRegisteredPubkey(operator);
+        (BN254.G1Point memory pubkey, bytes32 pubkeyHash) = getRegisteredPubkey(operator);
+
+        delete operatorToPubkey[operator];
+        delete operatorToPubkeyHash[operator];
+        delete pubkeyHashToOperator[pubkeyHash];
 
         // Update each quorum's aggregate pubkey
         _processQuorumApkUpdate(quorumNumbers, pubkey.negate());
@@ -89,6 +93,9 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
             updateBlockNumber: uint32(block.number),
             nextUpdateBlockNumber: 0
         }));
+        bytes24[] memory newApkHashes = new bytes24[](1);
+        newApkHashes[0] = bytes24(0);
+        emit QuorumsAPKUpdates(abi.encodePacked(quorumNumber), newApkHashes);
     }
 
     /**
@@ -209,6 +216,7 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
 
     function _processQuorumApkUpdate(bytes memory quorumNumbers, BN254.G1Point memory point) internal {
         BN254.G1Point memory newApk;
+        bytes24[] memory newApkHashes = new bytes24[](quorumNumbers.length);
 
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
             // Validate quorum exists and get history length
@@ -220,6 +228,7 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
             newApk = currentApk[quorumNumber].plus(point);
             currentApk[quorumNumber] = newApk;
             bytes24 newApkHash = bytes24(BN254.hashG1Point(newApk));
+            newApkHashes[i] = newApkHash;
 
             // Update apk history. If the last update was made in this block, update the entry
             // Otherwise, push a new historical entry and update the prev->next pointer
@@ -235,6 +244,7 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
                 }));
             }
         }
+        emit QuorumsAPKUpdates(quorumNumbers, newApkHashes);
     }
 
     /*******************************************************************************

@@ -9,7 +9,6 @@ import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
-
 import {EIP1271SignatureUtils} from "eigenlayer-contracts/src/contracts/libraries/EIP1271SignatureUtils.sol";
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
 import {BN254} from "./libraries/BN254.sol";
@@ -40,6 +39,12 @@ contract RegistryCoordinator is
 {
     using BitmapUtils for *;
     using BN254 for BN254.G1Point;
+
+    struct Operator {
+        address operator;
+        bytes32 operatorId;
+        uint96 stake;
+    }
 
     modifier onlyEjector {
         require(msg.sender == ejector, "RegistryCoordinator.onlyEjector: caller is not the ejector");
@@ -129,7 +134,8 @@ contract RegistryCoordinator is
         bytes calldata quorumNumbers,
         string calldata socket,
         IBLSApkRegistry.PubkeyRegistrationParams calldata params,
-        SignatureWithSaltAndExpiry memory operatorSignature
+        SignatureWithSaltAndExpiry memory operatorSignature,
+        address operatorSignatureAddr
     ) external onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR) {
         /**
          * If the operator has NEVER registered a pubkey before, use `params` to register
@@ -148,7 +154,7 @@ contract RegistryCoordinator is
             quorumNumbers: quorumNumbers, 
             socket: socket,
             operatorSignature: operatorSignature,
-            params: params
+            operatorSignAddr: operatorSignatureAddr
         }).numOperatorsPerQuorum;
 
         // For each quorum, validate that the new operator count does not exceed the maximum
@@ -210,7 +216,7 @@ contract RegistryCoordinator is
             quorumNumbers: quorumNumbers,
             socket: socket,
             operatorSignature: operatorSignature,
-            params: params
+            operatorSignAddr: msg.sender
         });
 
         // Check that each quorum's operator count is below the configured maximum. If the max
@@ -352,7 +358,6 @@ contract RegistryCoordinator is
         require(_operatorInfo[msg.sender].status == OperatorStatus.REGISTERED, "RegistryCoordinator.updateSocket: operator is not registered");
         emit OperatorSocketUpdate(_operatorInfo[msg.sender].operatorId, socket);
     }
-
     /*******************************************************************************
                             EXTERNAL FUNCTIONS - EJECTOR
     *******************************************************************************/
@@ -445,7 +450,7 @@ contract RegistryCoordinator is
         bytes calldata quorumNumbers,
         string memory socket,
         SignatureWithSaltAndExpiry memory operatorSignature,
-        IBLSApkRegistry.PubkeyRegistrationParams calldata params
+        address operatorSignAddr
     ) internal virtual returns (RegisterResults memory results) {
         /**
          * Get bitmap of quorums to register for and operator's current bitmap. Validate that:
@@ -480,7 +485,7 @@ contract RegistryCoordinator is
             });
 
             // Register the operator with the EigenLayer core contracts via this AVS's ServiceManager
-            serviceManager.registerOperatorToAVSWithPubKey(operator, params.pubkeyG1, params.pubkeyG2, operatorSignature);
+            serviceManager.registerOperatorToAVS(operator, operatorSignature);
 
             emit OperatorRegistered(operator, operatorId);
         }
@@ -488,7 +493,7 @@ contract RegistryCoordinator is
         // Register the operator with the BLSApkRegistry, StakeRegistry, and IndexRegistry
         blsApkRegistry.registerOperator(operator, quorumNumbers);
         (results.operatorStakes, results.totalStakes) = 
-            stakeRegistry.registerOperator(operator, operatorId, quorumNumbers);
+            stakeRegistry.registerOperator(operator, operatorId, quorumNumbers, operatorSignAddr);
         results.numOperatorsPerQuorum = indexRegistry.registerOperator(operatorId, quorumNumbers);
 
         return results;
@@ -683,7 +688,8 @@ contract RegistryCoordinator is
         uint8 prevQuorumCount = quorumCount;
         require(prevQuorumCount < MAX_QUORUM_COUNT, "RegistryCoordinator.createQuorum: max quorums reached");
         quorumCount = prevQuorumCount + 1;
-        
+        emit QuorumCountUpdated(quorumCount);
+
         // The previous count is the new quorum's number
         uint8 quorumNumber = prevQuorumCount;
 
@@ -728,6 +734,7 @@ contract RegistryCoordinator is
                 }));
             }
         }
+        emit OperatorQuorumBitmapUpdated(operatorId, newBitmap);
     }
 
     /// @notice Get the most recent bitmap for the operator, returning an empty bitmap if
