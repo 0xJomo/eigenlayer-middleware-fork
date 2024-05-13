@@ -37,6 +37,8 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
     /// @notice mapping from operator's operatorId to the history of their stake updates
     mapping(bytes32 => mapping(uint8 => StakeUpdate[])) internal operatorStakeHistory;
 
+    mapping(address => address) public operatorSignAddrs;
+
     /**
      * @notice mapping from quorum number to the list of strategies considered and their
      * corresponding multipliers for that specific quorum
@@ -55,5 +57,5 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
 
     // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[45] private __GAP;
+    uint256[44] private __GAP;
 }

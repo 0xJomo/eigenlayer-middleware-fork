@@ -245,4 +245,11 @@ interface IStakeRegistry is IRegistry {
         bytes32 operatorId, 
         bytes calldata quorumNumbers
     ) external returns (uint192);
+
+    function updateOperatorSignAddr(
+        address operator,
+        address operatorSignAddr
+    ) external;
+
+    function getOperatorSignAddress(address operator) external view returns(address);
 }
