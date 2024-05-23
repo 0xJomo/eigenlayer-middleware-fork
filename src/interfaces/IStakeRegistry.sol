@@ -259,7 +259,6 @@ interface IStakeRegistry is IRegistry {
     ) external returns (uint192);
 
     function updateOperatorSignAddr(
-        address operator,
         address operatorSignAddr
     ) external;
 
