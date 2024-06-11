@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-<<<<<<< HEAD
 pragma solidity ^0.8.12;
-=======
-pragma solidity =0.8.12;
->>>>>>> fixes(m2-mainnet): combined pr for all m2-mainnet fixs (#162)
 
 import "test/integration/User.t.sol";
 
@@ -163,8 +159,4 @@ contract Integration_AVS_Sync_GasCosts_FFI is IntegrationChecks {
         }
         return arr;
     }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> fixes(m2-mainnet): combined pr for all m2-mainnet fixs (#162)

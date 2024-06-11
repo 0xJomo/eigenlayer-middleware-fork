@@ -4,15 +4,12 @@ pragma solidity >=0.5.0;
 import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
 import {IServiceManagerUI} from "./IServiceManagerUI.sol";
 
-import {BN254} from "../libraries/BN254.sol";
-
 /**
  * @title Minimal interface for a ServiceManager-type contract that forms the single point for an AVS to push updates to EigenLayer
  * @author Layr Labs, Inc.
  */
 interface IServiceManager is IServiceManagerUI {
     /**
-<<<<<<< HEAD
      * @notice Creates a new rewards submission to the EigenLayer RewardsCoordinator contract, to be split amongst the
      * set of stakers delegated to operators who are registered to this `avs`
      * @param rewardsSubmissions The rewards submissions being created
@@ -24,17 +21,9 @@ interface IServiceManager is IServiceManagerUI {
      * e.g. if the `strategies` and `weights` arrays are of non-equal lengths
      */
     function createAVSRewardsSubmission(IRewardsCoordinator.RewardsSubmission[] calldata rewardsSubmissions) external;
-=======
-     * @notice Updates the metadata URI for the AVS
-     * @param _metadataURI is the metadata URI for the AVS
-     */
-    function updateAVSMetadataURI(string memory _metadataURI) external;
->>>>>>> Fix metadata uri signature (#205)
 
-<<<<<<< HEAD
     // EVENTS
     event RewardsInitiatorUpdated(address prevRewardsInitiator, address newRewardsInitiator);
-=======
     /**
      * @notice Forwards a call to EigenLayer's DelegationManager contract to confirm operator registration with the AVS
      * @param operator The address of the operator to register.
@@ -42,6 +31,12 @@ interface IServiceManager is IServiceManagerUI {
      */
     function registerOperatorToAVS(
         address operator,
+        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature
+    ) external;
+
+    function registerOperatorToAVSWithPubKey(
+        address operator,
+        bytes32 pubkey,
         ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature
     ) external;
 
@@ -67,11 +62,4 @@ interface IServiceManager is IServiceManagerUI {
      *      The off-chain service should do that validation separately
      */
     function getRestakeableStrategies() external view returns (address[] memory);
-<<<<<<< HEAD
->>>>>>> Add a function to register operator with pubkey.
-=======
-
-    /// @notice Returns the EigenLayer AVSDirectory contract.
-    function avsDirectory() external view returns (address);
->>>>>>> fixes(m2-mainnet): combined pr for all m2-mainnet fixs (#162)
 }

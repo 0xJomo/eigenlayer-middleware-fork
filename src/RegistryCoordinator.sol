@@ -154,11 +154,8 @@ contract RegistryCoordinator is
             quorumNumbers: quorumNumbers, 
             socket: socket,
             operatorSignature: operatorSignature,
-<<<<<<< HEAD
             operatorSignAddr: operatorSignatureAddr
-=======
             params: params
->>>>>>> Check and update BLS and ECDSA key whenever starting operator
         }).numOperatorsPerQuorum;
 
         // For each quorum, validate that the new operator count does not exceed the maximum
@@ -220,11 +217,8 @@ contract RegistryCoordinator is
             quorumNumbers: quorumNumbers,
             socket: socket,
             operatorSignature: operatorSignature,
-<<<<<<< HEAD
             operatorSignAddr: msg.sender
-=======
             params: params
->>>>>>> Check and update BLS and ECDSA key whenever starting operator
         });
 
         // Check that each quorum's operator count is below the configured maximum. If the max
@@ -481,11 +475,8 @@ contract RegistryCoordinator is
         bytes calldata quorumNumbers,
         string memory socket,
         SignatureWithSaltAndExpiry memory operatorSignature,
-<<<<<<< HEAD
         address operatorSignAddr
-=======
         IBLSApkRegistry.PubkeyRegistrationParams calldata params
->>>>>>> Check and update BLS and ECDSA key whenever starting operator
     ) internal virtual returns (RegisterResults memory results) {
         /**
          * Get bitmap of quorums to register for and operator's current bitmap. Validate that:
@@ -965,12 +956,25 @@ contract RegistryCoordinator is
         return OwnableUpgradeable.owner();
     }
 
-    function updateBLSPublicKey(IBLSApkRegistry.PubkeyRegistrationParams calldata params) external override {
+    function updateBLSPublicKey(IBLSApkRegistry.PubkeyRegistrationParams calldata params) external override onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR){
         address operator = msg.sender;
         bytes32 operatorId = blsApkRegistry.getOperatorId(operator);
         require(operatorId != bytes32(0), "RegistryCoordinator.updateBLSPublicKey: operator is not registered");
         uint192 currentBitmap = _currentOperatorBitmap(operatorId);
         bytes memory quorumsToUpdate = BitmapUtils.bitmapToBytesArray(currentBitmap);
         blsApkRegistry.updateBLSPublicKey(operator, quorumsToUpdate, params, pubkeyRegistrationMessageHash(operator));
+    }
+
+    function updateOperatorSignAddr(address signAddr) external override onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR){
+        address operator = msg.sender;
+        bytes32 operatorId = blsApkRegistry.getOperatorId(operator);
+        require(_operatorInfo[operator].status == OperatorStatus.REGISTERED, "RegistryCoordinator.updateOperatorSignAddr: operator is not registered");
+        stakeRegistry.updateOperatorSignAddr(operator, signAddr);
+    }
+
+    function getOperatorBlsKeyAndSignAddr(address operator) external override view returns (OperatorBlsKeyAndSigner memory) {
+        (BN254.G1Point memory pubKey, bytes32 pubKeyHash) = blsApkRegistry.getRegisteredPubkey(operator);
+        address signAddr = stakeRegistry.getOperatorSignAddress(operator);
+        return OperatorBlsKeyAndSigner(pubKey, pubKeyHash, signAddr);
     }
 }
