@@ -127,7 +127,7 @@ contract EjectionManagerUnitTests is MockAVSDeployer {
     }
 
     function testEjectOperators_MultipleOperatorOutsideRatelimit() public {
-        uint8 operatorsCanEject = 1;
+        uint8 operatorsCanEject = 2;
         uint8 operatorsToEject = 10;
         uint8 numOperators = 10;
         uint96 stake = 1 ether;
@@ -150,6 +150,55 @@ contract EjectionManagerUnitTests is MockAVSDeployer {
                 cheats.expectEmit(true, true, true, true, address(ejectionManager));
                 emit OperatorEjected(operatorIds[i][j], i);
             }
+        }
+
+        cheats.prank(ejector);
+        ejectionManager.ejectOperators(operatorIds);
+
+        for(uint8 i = 0; i < operatorsCanEject; i++) {
+            assertEq(uint8(registryCoordinator.getOperatorStatus(_incrementAddress(defaultOperator, i))), uint8(IRegistryCoordinator.OperatorStatus.DEREGISTERED));
+        }
+
+        for(uint8 i = operatorsCanEject; i < operatorsToEject; i++) {
+            assertEq(uint8(registryCoordinator.getOperatorStatus(_incrementAddress(defaultOperator, i))), uint8(IRegistryCoordinator.OperatorStatus.REGISTERED));
+        }
+    }
+
+    function testEjectOperators_NoEjectionForNoEjectableStake() public {
+        uint8 operatorsCanEject = 2;
+        uint8 operatorsToEject = 10;
+        uint8 numOperators = 10;
+        uint96 stake = 1 ether;
+        _registerOperaters(numOperators, stake);
+
+        bytes32[][] memory operatorIds = new bytes32[][](numQuorums);
+        for (uint8 i = 0; i < numQuorums; i++) {
+            operatorIds[i] = new bytes32[](operatorsToEject);
+            for (uint j = 0; j < operatorsToEject; j++) {
+                operatorIds[i][j] = registryCoordinator.getOperatorId(_incrementAddress(defaultOperator, j));
+            }
+        }
+
+        for(uint8 i = 0; i < operatorsToEject; i++) {
+            assertEq(uint8(registryCoordinator.getOperatorStatus(_incrementAddress(defaultOperator, i))), uint8(IRegistryCoordinator.OperatorStatus.REGISTERED));
+        }
+
+        for(uint8 i = 0; i < numQuorums; i++) {
+            for(uint8 j = 0; j < operatorsCanEject; j++) {
+                cheats.expectEmit(true, true, true, true, address(ejectionManager));
+                emit OperatorEjected(operatorIds[i][j], i);
+            }
+        }
+
+        cheats.prank(ejector);
+        ejectionManager.ejectOperators(operatorIds);
+
+        for(uint8 i = 0; i < operatorsCanEject; i++) {
+            assertEq(uint8(registryCoordinator.getOperatorStatus(_incrementAddress(defaultOperator, i))), uint8(IRegistryCoordinator.OperatorStatus.DEREGISTERED));
+        }
+
+        for(uint8 i = operatorsCanEject; i < operatorsToEject; i++) {
+            assertEq(uint8(registryCoordinator.getOperatorStatus(_incrementAddress(defaultOperator, i))), uint8(IRegistryCoordinator.OperatorStatus.REGISTERED));
         }
 
         cheats.prank(ejector);
@@ -375,6 +424,18 @@ contract EjectionManagerUnitTests is MockAVSDeployer {
 
         cheats.expectRevert("Ownable: caller is not the owner");
         ejectionManager.setEjector(address(0), true);
+    }
+
+    function test_Overflow_Regression() public {
+        cheats.prank(registryCoordinatorOwner);
+        ejectionManager.setQuorumEjectionParams(0, IEjectionManager.QuorumEjectionParams({
+            rateLimitWindow: 7 days,
+            ejectableStakePercent: 9999
+        }));
+
+        stakeRegistry.recordTotalStakeUpdate(1, 2_000_000_000 * 1 ether);
+
+        ejectionManager.amountEjectableForQuorum(1);
     }
 
     function _registerOperaters(uint8 numOperators, uint96 stake) internal {

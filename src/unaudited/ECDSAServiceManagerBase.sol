@@ -2,10 +2,8 @@
 pragma solidity ^0.8.12;
 
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
-
 import {ISignatureUtils} from "eigenlayer-contracts/src/contracts/interfaces/ISignatureUtils.sol";
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
-
 import {IServiceManager} from "../interfaces/IServiceManager.sol";
 import {IServiceManagerUI} from "../interfaces/IServiceManagerUI.sol";
 import {IDelegationManager} from "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
@@ -30,6 +28,10 @@ abstract contract ECDSAServiceManagerBase is
 
     /// @notice Address of the delegation manager contract, which manages staker delegations to operators.
     address internal immutable delegationManager;
+
+    /// @notice Address of the rewards initiator, which is allowed to create AVS rewards submissions.
+    address public rewardsInitiator;
+
     /**
      * @dev Ensures that the function is only callable by the `stakeRegistry` contract.
      * This is used to restrict certain registration and deregistration functionality to the `stakeRegistry`
@@ -40,6 +42,21 @@ abstract contract ECDSAServiceManagerBase is
             "ECDSAServiceManagerBase.onlyStakeRegistry: caller is not the stakeRegistry"
         );
         _;
+    }
+
+    /**
+     * @dev Ensures that the function is only callable by the `rewardsInitiator`.
+     */
+    modifier onlyRewardsInitiator() {
+        _checkRewardsInitiator();
+        _;
+    }
+
+    function _checkRewardsInitiator() internal view {
+        require(
+            msg.sender == rewardsInitiator,
+            "ECDSAServiceManagerBase.onlyRewardsInitiator: caller is not the rewards initiator"
+        );
     }
 
     /**
@@ -65,11 +82,14 @@ abstract contract ECDSAServiceManagerBase is
     /**
      * @dev Initializes the base service manager by transferring ownership to the initial owner.
      * @param initialOwner The address to which the ownership of the contract will be transferred.
+     * @param _rewardsInitiator The address which is allowed to create AVS rewards submissions.
      */
     function __ServiceManagerBase_init(
-        address initialOwner
+        address initialOwner,
+        address _rewardsInitiator
     ) internal virtual onlyInitializing {
         _transferOwnership(initialOwner);
+        _setRewardsInitiator(_rewardsInitiator);
     }
 
     /// @inheritdoc IServiceManagerUI
@@ -82,8 +102,23 @@ abstract contract ECDSAServiceManagerBase is
     /// @inheritdoc IServiceManager
     function createAVSRewardsSubmission(
         IRewardsCoordinator.RewardsSubmission[] calldata rewardsSubmissions
-    ) external virtual onlyOwner {
+    ) external virtual onlyRewardsInitiator {
         _createAVSRewardsSubmission(rewardsSubmissions);
+    }
+
+    /// @inheritdoc IServiceManager
+    function createOperatorDirectedAVSRewardsSubmission(
+        IRewardsCoordinator.OperatorDirectedRewardsSubmission[]
+            calldata operatorDirectedRewardsSubmissions
+    ) external virtual onlyRewardsInitiator {
+        _createOperatorDirectedAVSRewardsSubmission(
+            operatorDirectedRewardsSubmissions
+        );
+    }
+
+    /// @inheritdoc IServiceManager
+    function setClaimerFor(address claimer) external virtual onlyOwner {
+        _setClaimerFor(claimer);
     }
 
     /// @inheritdoc IServiceManagerUI
@@ -168,13 +203,77 @@ abstract contract ECDSAServiceManagerBase is
                 address(this),
                 rewardsSubmissions[i].amount
             );
+            uint256 allowance = rewardsSubmissions[i].token.allowance(
+                address(this),
+                rewardsCoordinator
+            );
             rewardsSubmissions[i].token.approve(
                 rewardsCoordinator,
-                rewardsSubmissions[i].amount
+                rewardsSubmissions[i].amount + allowance
             );
         }
 
-        IRewardsCoordinator(rewardsCoordinator).createAVSRewardsSubmission(rewardsSubmissions);
+        IRewardsCoordinator(rewardsCoordinator).createAVSRewardsSubmission(
+            rewardsSubmissions
+        );
+    }
+
+    /**
+     * @notice Creates a new operator-directed rewards submission, to be split amongst the operators and
+     * set of stakers delegated to operators who are registered to this `avs`.
+     * @param operatorDirectedRewardsSubmissions The operator-directed rewards submissions being created.
+     */
+    function _createOperatorDirectedAVSRewardsSubmission(
+        IRewardsCoordinator.OperatorDirectedRewardsSubmission[]
+            calldata operatorDirectedRewardsSubmissions
+    ) internal virtual {
+        for (
+            uint256 i = 0;
+            i < operatorDirectedRewardsSubmissions.length;
+            ++i
+        ) {
+            // Calculate total amount of token to transfer
+            uint256 totalAmount = 0;
+            for (
+                uint256 j = 0;
+                j <
+                operatorDirectedRewardsSubmissions[i].operatorRewards.length;
+                ++j
+            ) {
+                totalAmount += operatorDirectedRewardsSubmissions[i]
+                    .operatorRewards[j]
+                    .amount;
+            }
+
+            // Transfer token to ServiceManager and approve RewardsCoordinator to transfer again
+            // in createOperatorDirectedAVSRewardsSubmission() call
+            operatorDirectedRewardsSubmissions[i].token.transferFrom(
+                msg.sender,
+                address(this),
+                totalAmount
+            );
+            uint256 allowance = operatorDirectedRewardsSubmissions[i]
+                .token
+                .allowance(address(this), rewardsCoordinator);
+            operatorDirectedRewardsSubmissions[i].token.approve(
+                rewardsCoordinator,
+                totalAmount + allowance
+            );
+        }
+
+        IRewardsCoordinator(rewardsCoordinator)
+            .createOperatorDirectedAVSRewardsSubmission(
+                address(this),
+                operatorDirectedRewardsSubmissions
+            );
+    }
+
+    /**
+     * @notice Forwards a call to Eigenlayer's RewardsCoordinator contract to set the address of the entity that can call `processClaim` on behalf of this contract.
+     * @param claimer The address of the entity that can call `processClaim` on behalf of the earner.
+     */
+    function _setClaimerFor(address claimer) internal virtual {
+        IRewardsCoordinator(rewardsCoordinator).setClaimerFor(claimer);
     }
 
     /**
@@ -215,7 +314,6 @@ abstract contract ECDSAServiceManagerBase is
         uint256[] memory shares = IDelegationManager(delegationManager)
             .getOperatorShares(_operator, strategies);
 
-        address[] memory activeStrategies = new address[](count);
         uint256 activeCount;
         for (uint256 i; i < count; i++) {
             if (shares[i] > 0) {
@@ -225,16 +323,34 @@ abstract contract ECDSAServiceManagerBase is
 
         // Resize the array to fit only the active strategies
         address[] memory restakedStrategies = new address[](activeCount);
+        uint256 index;
         for (uint256 j = 0; j < count; j++) {
             if (shares[j] > 0) {
-                restakedStrategies[j] = activeStrategies[j];
+                restakedStrategies[index] = address(strategies[j]);
+                index++;
             }
         }
 
         return restakedStrategies;
     }
 
+    /**
+     * @notice Sets the rewards initiator address.
+     * @param newRewardsInitiator The new rewards initiator address.
+     * @dev Only callable by the owner.
+     */
+    function setRewardsInitiator(
+        address newRewardsInitiator
+    ) external onlyOwner {
+        _setRewardsInitiator(newRewardsInitiator);
+    }
+
+    function _setRewardsInitiator(address newRewardsInitiator) internal {
+        emit RewardsInitiatorUpdated(rewardsInitiator, newRewardsInitiator);
+        rewardsInitiator = newRewardsInitiator;
+    }
+
     // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[50] private __GAP;
+    uint256[49] private __GAP;
 }
