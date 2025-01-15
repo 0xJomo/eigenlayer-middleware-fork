@@ -27,6 +27,10 @@ abstract contract ECDSAStakeRegistryStorage is ECDSAStakeRegistryEventsAndErrors
     /// @notice Defines the duration after which the stake's weight expires.
     uint256 internal _stakeExpiry;
 
+    /// @notice Maps an operator to their signing key history using checkpoints
+    mapping(address => CheckpointsUpgradeable.History)
+        internal _operatorSigningKeyHistory;
+
     /// @notice Tracks the total stake history over time using checkpoints
     CheckpointsUpgradeable.History internal _totalWeightHistory;
 
@@ -47,5 +51,5 @@ abstract contract ECDSAStakeRegistryStorage is ECDSAStakeRegistryEventsAndErrors
     // slither-disable-next-line shadowing-state
     /// @dev Reserves storage slots for future upgrades
     // solhint-disable-next-line
-    uint256[42] private __gap;
+    uint256[40] private __gap;
 }

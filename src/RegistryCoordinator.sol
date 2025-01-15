@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.12;
+pragma solidity ^0.8.12;
 
 import {IPauserRegistry} from "eigenlayer-contracts/src/contracts/interfaces/IPauserRegistry.sol";
 import {ISignatureUtils} from "eigenlayer-contracts/src/contracts/interfaces/ISignatureUtils.sol";
-import {ISocketUpdater} from "./interfaces/ISocketUpdater.sol";
 import {IBLSApkRegistry} from "./interfaces/IBLSApkRegistry.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISocketRegistry} from "./interfaces/ISocketRegistry.sol";
+
 import {EIP1271SignatureUtils} from "eigenlayer-contracts/src/contracts/libraries/EIP1271SignatureUtils.sol";
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
 import {BN254} from "./libraries/BN254.sol";
@@ -33,18 +34,11 @@ contract RegistryCoordinator is
     Initializable, 
     Pausable,
     OwnableUpgradeable,
-    RegistryCoordinatorStorage, 
-    ISocketUpdater, 
+    RegistryCoordinatorStorage,
     ISignatureUtils
 {
     using BitmapUtils for *;
     using BN254 for BN254.G1Point;
-
-    struct Operator {
-        address operator;
-        bytes32 operatorId;
-        uint96 stake;
-    }
 
     modifier onlyEjector {
         require(msg.sender == ejector, "RegistryCoordinator.onlyEjector: caller is not the ejector");
@@ -65,9 +59,10 @@ contract RegistryCoordinator is
         IServiceManager _serviceManager,
         IStakeRegistry _stakeRegistry,
         IBLSApkRegistry _blsApkRegistry,
-        IIndexRegistry _indexRegistry
+        IIndexRegistry _indexRegistry,
+        ISocketRegistry _socketRegistry
     ) 
-        RegistryCoordinatorStorage(_serviceManager, _stakeRegistry, _blsApkRegistry, _indexRegistry)
+        RegistryCoordinatorStorage(_serviceManager, _stakeRegistry, _blsApkRegistry, _indexRegistry, _socketRegistry)
         EIP712("AVSRegistryCoordinator", "v0.0.1") 
     {
         _disableInitializers();
@@ -355,8 +350,8 @@ contract RegistryCoordinator is
      * @param socket is the new socket of the operator
      */
     function updateSocket(string memory socket) external {
-        require(_operatorInfo[msg.sender].status == OperatorStatus.REGISTERED, "RegistryCoordinator.updateSocket: operator is not registered");
-        emit OperatorSocketUpdate(_operatorInfo[msg.sender].operatorId, socket);
+        require(_operatorInfo[msg.sender].status == OperatorStatus.REGISTERED, "RegCoord.updateSocket: operator not registered");
+        _setOperatorSocket(_operatorInfo[msg.sender].operatorId, socket);
     }
     /*******************************************************************************
                             EXTERNAL FUNCTIONS - EJECTOR
@@ -371,10 +366,22 @@ contract RegistryCoordinator is
         address operator, 
         bytes calldata quorumNumbers
     ) external onlyEjector {
-        _deregisterOperator({
-            operator: operator, 
-            quorumNumbers: quorumNumbers
-        });
+        lastEjectionTimestamp[operator] = block.timestamp;
+
+        OperatorInfo storage operatorInfo = _operatorInfo[operator];
+        bytes32 operatorId = operatorInfo.operatorId;
+        uint192 quorumsToRemove = uint192(BitmapUtils.orderedBytesArrayToBitmap(quorumNumbers, quorumCount));
+        uint192 currentBitmap = _currentOperatorBitmap(operatorId);
+        if(
+            operatorInfo.status == OperatorStatus.REGISTERED &&
+            !quorumsToRemove.isEmpty() &&
+            quorumsToRemove.isSubsetOf(currentBitmap)
+        ){
+            _deregisterOperator({
+                operator: operator,
+                quorumNumbers: quorumNumbers
+            });
+        }
     }
 
     /*******************************************************************************
@@ -430,6 +437,16 @@ contract RegistryCoordinator is
         _setEjector(_ejector);
     }
 
+    /**
+     * @notice Sets the ejection cooldown, which is the time an operator must wait in
+     * seconds afer ejection before registering for any quorum
+     * @param _ejectionCooldown the new ejection cooldown in seconds
+     * @dev only callable by the owner
+     */
+    function setEjectionCooldown(uint256 _ejectionCooldown) external onlyOwner {
+        ejectionCooldown = _ejectionCooldown;
+    }
+
     /*******************************************************************************
                             INTERNAL FUNCTIONS
     *******************************************************************************/
@@ -465,6 +482,9 @@ contract RegistryCoordinator is
         require(quorumsToAdd.noBitsInCommon(currentBitmap), "RegistryCoordinator._registerOperator: operator already registered for some quorums being registered for");
         uint192 newBitmap = uint192(currentBitmap.plus(quorumsToAdd));
 
+        // Check that the operator can reregister if ejected
+        require(lastEjectionTimestamp[operator] + ejectionCooldown < block.timestamp, "RegistryCoordinator._registerOperator: operator cannot reregister yet");
+
         /**
          * Update operator's bitmap, socket, and status. Only update operatorInfo if needed:
          * if we're `REGISTERED`, the operatorId and status are already correct.
@@ -497,6 +517,26 @@ contract RegistryCoordinator is
         results.numOperatorsPerQuorum = indexRegistry.registerOperator(operatorId, quorumNumbers);
 
         return results;
+    }
+
+    /**
+     * @notice Checks if the caller is the ejector
+     * @dev Reverts if the caller is not the ejector
+     */
+    function _checkEjector() internal view {
+        require(msg.sender == ejector, "RegCoord.onlyEjector: caller is not the ejector");
+    }
+
+    /**
+     * @notice Checks if a quorum exists
+     * @param quorumNumber The quorum number to check
+     * @dev Reverts if the quorum does not exist
+     */
+    function _checkQuorumExists(uint8 quorumNumber) internal view {
+        require(
+            quorumNumber < quorumCount,
+            "RegCoord.quorumExists: quorum does not exist"
+        );
     }
 
     /**
@@ -789,6 +829,11 @@ contract RegistryCoordinator is
         ejector = newEjector;
     }
 
+    function _setOperatorSocket(bytes32 operatorId, string memory socket) internal {
+        socketRegistry.setOperatorSocket(operatorId, socket);
+        emit OperatorSocketUpdate(operatorId, socket);
+    }
+
     /*******************************************************************************
                             VIEW FUNCTIONS
     *******************************************************************************/
@@ -927,12 +972,4 @@ contract RegistryCoordinator is
         return OwnableUpgradeable.owner();
     }
 
-    function updateBLSPublicKey(IBLSApkRegistry.PubkeyRegistrationParams calldata params) external override {
-        address operator = msg.sender;
-        bytes32 operatorId = blsApkRegistry.getOperatorId(operator);
-        require(operatorId != bytes32(0), "RegistryCoordinator.updateBLSPublicKey: operator is not registered");
-        uint192 currentBitmap = _currentOperatorBitmap(operatorId);
-        bytes memory quorumsToUpdate = BitmapUtils.bitmapToBytesArray(currentBitmap);
-        blsApkRegistry.updateBLSPublicKey(operator, quorumsToUpdate, params, pubkeyRegistrationMessageHash(operator));
-    }
 }

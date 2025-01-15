@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.12;
+pragma solidity ^0.8.12;
 
 import {IRegistry} from "./IRegistry.sol";
 
@@ -118,17 +118,8 @@ interface IBLSApkRegistry is IRegistry {
         BN254.G1Point calldata pubkeyRegistrationMessageHash
     ) external returns (bytes32 operatorId);
 
-    /**
-     * @notice Called by the RegistryCoordinator update an operator as the owner of a BLS public key.
-     * @param operator is the operator for whom the key is being registered
-     * @param params contains the G1 & G2 public keys of the operator, and a signature proving their ownership
-     * @param pubkeyRegistrationMessageHash is a hash that the operator must sign to prove key ownership
-     */
     function updateBLSPublicKey(
-        address operator,
-        bytes memory quorumNumbers,
-        PubkeyRegistrationParams calldata params,
-        BN254.G1Point calldata pubkeyRegistrationMessageHash
+        PubkeyRegistrationParams calldata params
     ) external returns (bytes32 operatorId);
 
     /**

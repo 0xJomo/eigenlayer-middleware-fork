@@ -89,12 +89,17 @@ contract ECDSAStakeRegistryPermissioned is ECDSAStakeRegistry {
     /// @inheritdoc ECDSAStakeRegistry
     function _registerOperatorWithSig(
         address _operator,
-        ISignatureUtils.SignatureWithSaltAndExpiry memory _operatorSignature
+        ISignatureUtils.SignatureWithSaltAndExpiry memory _operatorSignature,
+        address _operatorSigningKey
     ) internal override {
-        if (allowlistedOperators[_operator] != true){
+        if (allowlistedOperators[_operator] != true) {
             revert OperatorNotAllowlisted();
         }
-        super._registerOperatorWithSig(_operator, _operatorSignature);
+        super._registerOperatorWithSig(
+            _operator,
+            _operatorSignature,
+            _operatorSigningKey
+        );
     }
 }
 

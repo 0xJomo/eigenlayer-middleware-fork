@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.12;
+pragma solidity ^0.8.12;
 
 import {BLSApkRegistryStorage} from "./BLSApkRegistryStorage.sol";
 
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
 
 import {BN254} from "./libraries/BN254.sol";
+
+import {BitmapUtils} from "./libraries/BitmapUtils.sol";
 
 contract BLSApkRegistry is BLSApkRegistryStorage {
     using BN254 for BN254.G1Point;
@@ -44,7 +46,7 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         bytes memory quorumNumbers
     ) public virtual onlyRegistryCoordinator {
         // Get the operator's pubkey. Reverts if they have not registered a key
-        (BN254.G1Point memory pubkey, ) = getRegisteredPubkey(operator);
+        (BN254.G1Point memory pubkey,) = getRegisteredPubkey(operator);
 
         // Update each quorum's aggregate pubkey
         _processQuorumApkUpdate(quorumNumbers, pubkey);
@@ -89,9 +91,9 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         require(apkHistory[quorumNumber].length == 0, "BLSApkRegistry.initializeQuorum: quorum already exists");
 
         apkHistory[quorumNumber].push(ApkUpdate({
-            apkHash: bytes24(0),
-            updateBlockNumber: uint32(block.number),
-            nextUpdateBlockNumber: 0
+        apkHash : bytes24(0),
+        updateBlockNumber : uint32(block.number),
+        nextUpdateBlockNumber : 0
         }));
         bytes24[] memory newApkHashes = new bytes24[](1);
         newApkHashes[0] = bytes24(0);
@@ -124,23 +126,23 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
 
         // gamma = h(sigma, P, P', H(m))
         uint256 gamma = uint256(keccak256(abi.encodePacked(
-            params.pubkeyRegistrationSignature.X, 
-            params.pubkeyRegistrationSignature.Y, 
-            params.pubkeyG1.X, 
-            params.pubkeyG1.Y, 
-            params.pubkeyG2.X, 
-            params.pubkeyG2.Y, 
-            pubkeyRegistrationMessageHash.X, 
-            pubkeyRegistrationMessageHash.Y
-        ))) % BN254.FR_MODULUS;
-        
+                params.pubkeyRegistrationSignature.X,
+                params.pubkeyRegistrationSignature.Y,
+                params.pubkeyG1.X,
+                params.pubkeyG1.Y,
+                params.pubkeyG2.X,
+                params.pubkeyG2.Y,
+                pubkeyRegistrationMessageHash.X,
+                pubkeyRegistrationMessageHash.Y
+            ))) % BN254.FR_MODULUS;
+
         // e(sigma + P * gamma, [-1]_2) = e(H(m) + [1]_1 * gamma, P') 
         require(BN254.pairing(
-            params.pubkeyRegistrationSignature.plus(params.pubkeyG1.scalar_mul(gamma)),
-            BN254.negGeneratorG2(),
-            pubkeyRegistrationMessageHash.plus(BN254.generatorG1().scalar_mul(gamma)),
-            params.pubkeyG2
-        ), "BLSApkRegistry.registerBLSPublicKey: either the G1 signature is wrong, or G1 and G2 private key do not match");
+                params.pubkeyRegistrationSignature.plus(params.pubkeyG1.scalar_mul(gamma)),
+                BN254.negGeneratorG2(),
+                pubkeyRegistrationMessageHash.plus(BN254.generatorG1().scalar_mul(gamma)),
+                params.pubkeyG2
+            ), "BLSApkRegistry.registerBLSPublicKey: either the G1 signature is wrong, or G1 and G2 private key do not match");
 
         operatorToPubkey[operator] = params.pubkeyG1;
         operatorToPubkeyHash[operator] = pubkeyHash;
@@ -150,19 +152,27 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         return pubkeyHash;
     }
 
+    function updateBLSPublicKey(PubkeyRegistrationParams calldata params) external override returns (bytes32 operatorId) {
+        address operator = msg.sender;
+        bytes32 operatorId = getOperatorId(operator);
+        require(operatorId != bytes32(0), "BLSApkRegistry.updateBLSPublicKey: operator is not registered");
+        IRegistryCoordinator __registryCoordinator = IRegistryCoordinator(registryCoordinator);
+        uint192 currentBitmap = __registryCoordinator.getCurrentQuorumBitmap(operatorId);
+        bytes memory quorumNumbers = BitmapUtils.bitmapToBytesArray(currentBitmap);
+        BN254.G1Point memory pubkeyRegistrationMessageHash = __registryCoordinator.pubkeyRegistrationMessageHash(operator);
+        return _updateBLSPublicKey(operator, quorumNumbers, params, pubkeyRegistrationMessageHash);
+    }
 
-    /**
-     * @notice Called by the RegistryCoordinator update an operator as the owner of a BLS public key.
-     * @param operator is the operator for whom the key is being registered
-     * @param params contains the G1 & G2 public keys of the operator, and a signature proving their ownership
-     * @param pubkeyRegistrationMessageHash is a hash that the operator must sign to prove key ownership
-     */
-    function updateBLSPublicKey(
+    /*******************************************************************************
+                            INTERNAL FUNCTIONS
+    *******************************************************************************/
+
+    function _updateBLSPublicKey(
         address operator,
         bytes memory quorumNumbers,
         PubkeyRegistrationParams calldata params,
-        BN254.G1Point calldata pubkeyRegistrationMessageHash
-    ) external onlyRegistryCoordinator returns (bytes32 operatorId) {
+        BN254.G1Point memory pubkeyRegistrationMessageHash
+    ) internal returns (bytes32 operatorId) {
         bytes32 pubkeyHash = BN254.hashG1Point(params.pubkeyG1);
         require(
             pubkeyHash != ZERO_PK_HASH, "BLSApkRegistry.updateBLSPublicKey: cannot update zero pubkey"
@@ -202,10 +212,6 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         return pubkeyHash;
     }
 
-    /*******************************************************************************
-                            INTERNAL FUNCTIONS
-    *******************************************************************************/
-
     function _processQuorumApkUpdate(bytes memory quorumNumbers, BN254.G1Point memory point) internal {
         BN254.G1Point memory newApk;
         bytes24[] memory newApkHashes = new bytes24[](quorumNumbers.length);
@@ -230,9 +236,9 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
             } else {
                 lastUpdate.nextUpdateBlockNumber = uint32(block.number);
                 apkHistory[quorumNumber].push(ApkUpdate({
-                    apkHash: newApkHash,
-                    updateBlockNumber: uint32(block.number),
-                    nextUpdateBlockNumber: 0
+                apkHash : newApkHash,
+                updateBlockNumber : uint32(block.number),
+                nextUpdateBlockNumber : 0
                 }));
             }
         }
@@ -254,7 +260,7 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
             pubkeyHash != bytes32(0),
             "BLSApkRegistry.getRegisteredPubkey: operator is not registered"
         );
-        
+
         return (pubkey, pubkeyHash);
     }
 
@@ -267,10 +273,10 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         uint256 blockNumber
     ) external view returns (uint32[] memory) {
         uint32[] memory indices = new uint32[](quorumNumbers.length);
-        
+
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
             uint8 quorumNumber = uint8(quorumNumbers[i]);
-            
+
             uint256 quorumApkUpdatesLength = apkHistory[quorumNumber].length;
             if (quorumApkUpdatesLength == 0 || blockNumber < apkHistory[quorumNumber][0].updateBlockNumber) {
                 revert("BLSApkRegistry.getApkIndicesAtBlockNumber: blockNumber is before the first update");

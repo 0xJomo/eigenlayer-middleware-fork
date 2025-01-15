@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.12;
+pragma solidity ^0.8.12;
 
 import {IBLSApkRegistry} from "./IBLSApkRegistry.sol";
 import {IStakeRegistry} from "./IStakeRegistry.sol";
@@ -24,6 +24,8 @@ interface IRegistryCoordinator {
     event ChurnApproverUpdated(address prevChurnApprover, address newChurnApprover);
 
     event EjectorUpdated(address prevEjector, address newEjector);
+
+    event OperatorSocketUpdate(bytes32 indexed operatorId, string socket);
 
     event QuorumCountUpdated(uint8 quorumCount);
 
@@ -155,6 +157,9 @@ interface IRegistryCoordinator {
     /// @notice The owner of the registry coordinator
     function owner() external view returns (address);
 
-    function updateBLSPublicKey(IBLSApkRegistry.PubkeyRegistrationParams calldata params) external;
-
+    /**
+     * @notice Updates the socket of the msg.sender given they are a registered operator
+     * @param socket is the new socket of the operator
+     */
+    function updateSocket(string memory socket) external;
 }

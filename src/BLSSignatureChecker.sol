@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.12;
+pragma solidity ^0.8.12;
 
 import {IBLSSignatureChecker} from "./interfaces/IBLSSignatureChecker.sol";
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
@@ -40,8 +40,6 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
         stakeRegistry = _registryCoordinator.stakeRegistry();
         blsApkRegistry = _registryCoordinator.blsApkRegistry();
         delegation = stakeRegistry.delegation();
-        
-        staleStakesForbidden = true;
     }
 
     /**
@@ -50,8 +48,7 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
      * @param value to toggle staleStakesForbidden
      */
     function setStaleStakesForbidden(bool value) external onlyCoordinatorOwner {
-        staleStakesForbidden = value;
-        emit StaleStakesForbiddenUpdate(value);
+        _setStaleStakesForbidden(value);
     }
 
     struct NonSignerInfo {
@@ -282,6 +279,11 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
                 apkG2,
                 PAIRING_EQUALITY_CHECK_GAS
             );
+    }
+
+    function _setStaleStakesForbidden(bool value) internal {
+        staleStakesForbidden = value;
+        emit StaleStakesForbiddenUpdate(value);
     }
 
     // storage gap for upgradeability
