@@ -10,7 +10,7 @@ import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
 import {ISocketRegistry} from "./interfaces/ISocketRegistry.sol";
 
-import {EIP1271SignatureUtils} from "eigenlayer-contracts/src/contracts/libraries/EIP1271SignatureUtils.sol";
+import {EIP1271SignatureUtils} from "./libraries/EIP1271SignatureUtils.sol";
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
 import {BN254} from "./libraries/BN254.sol";
 
@@ -60,10 +60,12 @@ contract RegistryCoordinator is
         IStakeRegistry _stakeRegistry,
         IBLSApkRegistry _blsApkRegistry,
         IIndexRegistry _indexRegistry,
-        ISocketRegistry _socketRegistry
+        ISocketRegistry _socketRegistry,
+        IPauserRegistry _pauserRegistry
     ) 
         RegistryCoordinatorStorage(_serviceManager, _stakeRegistry, _blsApkRegistry, _indexRegistry, _socketRegistry)
-        EIP712("AVSRegistryCoordinator", "v0.0.1") 
+        EIP712("AVSRegistryCoordinator", "v0.0.1")
+        Pausable(_pauserRegistry)
     {
         _disableInitializers();
     }
@@ -72,7 +74,6 @@ contract RegistryCoordinator is
      * @param _initialOwner will hold the owner role
      * @param _churnApprover will hold the churnApprover role, which authorizes registering with churn
      * @param _ejector will hold the ejector role, which can force-eject operators from quorums
-     * @param _pauserRegistry a registry of addresses that can pause the contract
      * @param _initialPausedStatus pause status after calling initialize
      * Config for initial quorums (see `createQuorum`):
      * @param _operatorSetParams max operator count and operator churn parameters
@@ -83,7 +84,6 @@ contract RegistryCoordinator is
         address _initialOwner,
         address _churnApprover,
         address _ejector,
-        IPauserRegistry _pauserRegistry,
         uint256 _initialPausedStatus,
         OperatorSetParam[] memory _operatorSetParams,
         uint96[] memory _minimumStakes,
@@ -96,7 +96,7 @@ contract RegistryCoordinator is
         
         // Initialize roles
         _transferOwnership(_initialOwner);
-        _initializePauser(_pauserRegistry, _initialPausedStatus);
+        _setPausedStatus(_initialPausedStatus);
         _setChurnApprover(_churnApprover);
         _setEjector(_ejector);
 

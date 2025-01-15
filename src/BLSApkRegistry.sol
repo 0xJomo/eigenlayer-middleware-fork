@@ -154,7 +154,7 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
 
     function updateBLSPublicKey(PubkeyRegistrationParams calldata params) external override returns (bytes32 operatorId) {
         address operator = msg.sender;
-        bytes32 operatorId = getOperatorId(operator);
+        operatorId = getOperatorId(operator);
         require(operatorId != bytes32(0), "BLSApkRegistry.updateBLSPublicKey: operator is not registered");
         IRegistryCoordinator __registryCoordinator = IRegistryCoordinator(registryCoordinator);
         uint192 currentBitmap = __registryCoordinator.getCurrentQuorumBitmap(operatorId);
