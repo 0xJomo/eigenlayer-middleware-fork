@@ -12,7 +12,7 @@ contract IndexRegistry is IndexRegistryStorage {
 
     /// @notice when applied to a function, only allows the RegistryCoordinator to call it
     modifier onlyRegistryCoordinator() {
-        require(msg.sender == address(registryCoordinator), "IndexRegistry.onlyRegistryCoordinator: caller is not the registry coordinator");
+        _checkRegistryCoordinator();
         _;
     }
 
@@ -47,7 +47,7 @@ contract IndexRegistry is IndexRegistryStorage {
             // Validate quorum exists and get current operator count
             uint8 quorumNumber = uint8(quorumNumbers[i]);
             uint256 historyLength = _operatorCountHistory[quorumNumber].length;
-            require(historyLength != 0, "IndexRegistry.registerOperator: quorum does not exist");
+            require(historyLength != 0, QuorumDoesNotExist());
 
             /**
              * Increase the number of operators currently active for this quorum,
@@ -87,7 +87,7 @@ contract IndexRegistry is IndexRegistryStorage {
             // Validate quorum exists and get the operatorIndex of the operator being deregistered
             uint8 quorumNumber = uint8(quorumNumbers[i]);
             uint256 historyLength = _operatorCountHistory[quorumNumber].length;
-            require(historyLength != 0, "IndexRegistry.registerOperator: quorum does not exist");
+            require(historyLength != 0, QuorumDoesNotExist());
             uint32 operatorIndexToRemove = currentOperatorIndex[quorumNumber][operatorId];
 
             /**
@@ -113,7 +113,7 @@ contract IndexRegistry is IndexRegistryStorage {
      * @param quorumNumber The number of the new quorum
      */
     function initializeQuorum(uint8 quorumNumber) public virtual onlyRegistryCoordinator {
-        require(_operatorCountHistory[quorumNumber].length == 0, "IndexRegistry.createQuorum: quorum already exists");
+        require(_operatorCountHistory[quorumNumber].length == 0, QuorumDoesNotExist());
 
         _operatorCountHistory[quorumNumber].push(QuorumUpdate({
             numOperators: 0,
@@ -328,8 +328,8 @@ contract IndexRegistry is IndexRegistryStorage {
         for (uint256 i = 0; i < operatorCount; i++) {
             operatorList[i] = _operatorIdForIndexAtBlockNumber(quorumNumber, uint32(i), blockNumber);
             require(
-                operatorList[i] != OPERATOR_DOES_NOT_EXIST_ID, 
-                "IndexRegistry.getOperatorListAtBlockNumber: operator does not exist at the given block number"
+                operatorList[i] != OPERATOR_DOES_NOT_EXIST_ID,
+                OperatorIdDoesNotExist()
             );
         }
         return operatorList;
@@ -339,5 +339,9 @@ contract IndexRegistry is IndexRegistryStorage {
     /// @dev This will revert if the quorum does not exist
     function totalOperatorsForQuorum(uint8 quorumNumber) external view returns (uint32){
         return _latestQuorumUpdate(quorumNumber).numOperators;
+    }
+
+    function _checkRegistryCoordinator() internal view {
+        require(msg.sender == address(registryCoordinator), OnlyRegistryCoordinator());
     }
 }

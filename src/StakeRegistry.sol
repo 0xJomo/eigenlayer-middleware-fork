@@ -2,11 +2,15 @@
 pragma solidity ^0.8.12;
 
 import {IDelegationManager} from "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
+import {IAVSDirectory } from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
+import {OperatorSet} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IServiceManager} from "./interfaces/IServiceManager.sol";
 
 import {StakeRegistryStorage, IStrategy} from "./StakeRegistryStorage.sol";
 
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
-import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
+import {IStakeRegistry, StakeType} from "./interfaces/IStakeRegistry.sol";
 
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
 
@@ -24,27 +28,26 @@ contract StakeRegistry is StakeRegistryStorage {
     using BitmapUtils for *;
     
     modifier onlyRegistryCoordinator() {
-        require(
-            msg.sender == address(registryCoordinator),
-            "StakeRegistry.onlyRegistryCoordinator: caller is not the RegistryCoordinator"
-        );
+        _checkRegistryCoordinator();
         _;
     }
 
     modifier onlyCoordinatorOwner() {
-        require(msg.sender == IRegistryCoordinator(registryCoordinator).owner(), "StakeRegistry.onlyCoordinatorOwner: caller is not the owner of the registryCoordinator");
+        _checkRegistryCoordinatorOwner();
         _;
     }
 
     modifier quorumExists(uint8 quorumNumber) {
-        require(_quorumExists(quorumNumber), "StakeRegistry.quorumExists: quorum does not exist");
+        _checkQuorumExists(quorumNumber);
         _;
     }
 
     constructor(
         IRegistryCoordinator _registryCoordinator,
-        IDelegationManager _delegationManager
-    ) StakeRegistryStorage(_registryCoordinator, _delegationManager) {}
+        IDelegationManager _delegationManager,
+        IAVSDirectory _avsDirectory,
+        IServiceManager _serviceManager
+    ) StakeRegistryStorage(_registryCoordinator, _delegationManager, _avsDirectory, _serviceManager) {}
 
     /*******************************************************************************
                       EXTERNAL FUNCTIONS - REGISTRY COORDINATOR
@@ -75,15 +78,12 @@ contract StakeRegistry is StakeRegistryStorage {
         for (uint256 i = 0; i < quorumNumbers.length; i++) {            
             
             uint8 quorumNumber = uint8(quorumNumbers[i]);
-            require(_quorumExists(quorumNumber), "StakeRegistry.registerOperator: quorum does not exist");
+            _checkQuorumExists(quorumNumber);
 
             // Retrieve the operator's current weighted stake for the quorum, reverting if they have not met
             // the minimum.
             (uint96 currentStake, bool hasMinimumStake) = _weightOfOperatorForQuorum(quorumNumber, operator);
-            require(
-                hasMinimumStake,
-                "StakeRegistry.registerOperator: Operator does not meet minimum stake requirement for quorum"
-            );
+            require(hasMinimumStake, BelowMinimumStakeRequirement());
 
             // Update the operator's stake
             int256 stakeDelta = _recordOperatorStakeUpdate({
@@ -124,7 +124,7 @@ contract StakeRegistry is StakeRegistryStorage {
          */
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
             uint8 quorumNumber = uint8(quorumNumbers[i]);
-            require(_quorumExists(quorumNumber), "StakeRegistry.deregisterOperator: quorum does not exist");
+            _checkQuorumExists(quorumNumber);
 
             // Update the operator's stake for the quorum and retrieve the shares removed
             int256 stakeDelta = _recordOperatorStakeUpdate({
@@ -164,7 +164,7 @@ contract StakeRegistry is StakeRegistryStorage {
          */
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
             uint8 quorumNumber = uint8(quorumNumbers[i]);
-            require(_quorumExists(quorumNumber), "StakeRegistry.updateOperatorStake: quorum does not exist");
+            _checkQuorumExists(quorumNumber);
 
             // Fetch the operator's current stake, applying weighting parameters and checking
             // against the minimum stake requirements for the quorum.
@@ -192,14 +192,36 @@ contract StakeRegistry is StakeRegistryStorage {
     }
 
     /// @notice Initialize a new quorum and push its first history update
-    function initializeQuorum(
+    function initializeDelegatedStakeQuorum(
         uint8 quorumNumber,
         uint96 minimumStake,
         StrategyParams[] memory _strategyParams
     ) public virtual onlyRegistryCoordinator {
-        require(!_quorumExists(quorumNumber), "StakeRegistry.initializeQuorum: quorum already exists");
+        require(!_quorumExists(quorumNumber), QuorumAlreadyExists());
         _addStrategyParams(quorumNumber, _strategyParams);
         _setMinimumStakeForQuorum(quorumNumber, minimumStake);
+        _setStakeType(quorumNumber, StakeType.TOTAL_DELEGATED);
+
+        _totalStakeHistory[quorumNumber].push(StakeUpdate({
+            updateBlockNumber: uint32(block.number),
+            nextUpdateBlockNumber: 0,
+            stake: 0
+        }));
+    }
+
+
+    /// @notice Initialize a new quorum and push its first history update
+    function initializeSlashableStakeQuorum(
+        uint8 quorumNumber,
+        uint96 minimumStake,
+        uint32 lookAheadPeriod,
+        StrategyParams[] memory _strategyParams
+    ) public virtual onlyRegistryCoordinator {
+        require(!_quorumExists(quorumNumber), QuorumAlreadyExists());
+        _addStrategyParams(quorumNumber, _strategyParams);
+        _setMinimumStakeForQuorum(quorumNumber, minimumStake);
+        _setStakeType(quorumNumber, StakeType.TOTAL_SLASHABLE);
+        _setLookAheadPeriod(quorumNumber, lookAheadPeriod);
 
         _totalStakeHistory[quorumNumber].push(StakeUpdate({
             updateBlockNumber: uint32(block.number),
@@ -216,7 +238,16 @@ contract StakeRegistry is StakeRegistryStorage {
         _setMinimumStakeForQuorum(quorumNumber, minimumStake);
     }
 
-    /** 
+    /**
+     * @notice Sets the look ahead time for checking operator shares for a specific quorum
+     * @param quorumNumber The quorum number to set the look ahead period for
+     * @param _lookAheadPeriod The number of days to look ahead when checking shares
+     */
+    function setSlashableStakeLookahead(uint8 quorumNumber, uint32 _lookAheadPeriod) external onlyCoordinatorOwner quorumExists(quorumNumber) {
+        _setLookAheadPeriod(quorumNumber, _lookAheadPeriod);
+    }
+
+    /**
      * @notice Adds strategies and weights to the quorum
      * @dev Checks to make sure that the *same* strategy cannot be added multiple times (checks against both against existing and new strategies).
      * @dev This function has no check to make sure that the strategies for a single quorum have the same underlying asset. This is a concious choice,
@@ -227,6 +258,16 @@ contract StakeRegistry is StakeRegistryStorage {
         StrategyParams[] memory _strategyParams
     ) public virtual onlyCoordinatorOwner quorumExists(quorumNumber) {
         _addStrategyParams(quorumNumber, _strategyParams);
+
+        uint256 numStratsToAdd = _strategyParams.length;
+
+        if (isOperatorSetQuorum(quorumNumber)){
+            IStrategy[] memory strategiesToAdd = new IStrategy[](numStratsToAdd);
+            for (uint256 i = 0; i < numStratsToAdd; i++) {
+                strategiesToAdd[i] = _strategyParams[i].strategy;
+            }
+            serviceManager.addStrategyToOperatorSet(quorumNumber, strategiesToAdd);
+        }
     }
 
     /**
@@ -239,20 +280,28 @@ contract StakeRegistry is StakeRegistryStorage {
         uint256[] memory indicesToRemove
     ) public virtual onlyCoordinatorOwner quorumExists(quorumNumber) {
         uint256 toRemoveLength = indicesToRemove.length;
-        require(toRemoveLength > 0, "StakeRegistry.removeStrategies: no indices to remove provided");
+        require(toRemoveLength > 0, InputArrayLengthZero());
 
         StrategyParams[] storage _strategyParams = strategyParams[quorumNumber];
         IStrategy[] storage _strategiesPerQuorum = strategiesPerQuorum[quorumNumber];
+        IStrategy[] memory _strategiesToRemove = new IStrategy[](toRemoveLength);
 
         for (uint256 i = 0; i < toRemoveLength; i++) {
+            _strategiesToRemove[i]=_strategyParams[indicesToRemove[i]].strategy;
             emit StrategyRemovedFromQuorum(quorumNumber, _strategyParams[indicesToRemove[i]].strategy);
             emit StrategyMultiplierUpdated(quorumNumber, _strategyParams[indicesToRemove[i]].strategy, 0);
+
+
 
             // Replace index to remove with the last item in the list, then pop the last item
             _strategyParams[indicesToRemove[i]] = _strategyParams[_strategyParams.length - 1];
             _strategyParams.pop();
             _strategiesPerQuorum[indicesToRemove[i]] = _strategiesPerQuorum[_strategiesPerQuorum.length - 1];
             _strategiesPerQuorum.pop();
+        }
+
+        if (isOperatorSetQuorum(quorumNumber)){
+            serviceManager.removeStrategiesFromOperatorSet(quorumNumber, _strategiesToRemove);
         }
     }
 
@@ -268,8 +317,8 @@ contract StakeRegistry is StakeRegistryStorage {
         uint96[] calldata newMultipliers
     ) public virtual onlyCoordinatorOwner quorumExists(quorumNumber) {
         uint256 numStrats = strategyIndices.length;
-        require(numStrats > 0, "StakeRegistry.modifyStrategyParams: no strategy indices provided");
-        require(newMultipliers.length == numStrats, "StakeRegistry.modifyStrategyParams: input length mismatch");
+        require(numStrats > 0, InputArrayLengthZero());
+        require(newMultipliers.length == numStrats, InputArrayLengthMismatch());
 
         StrategyParams[] storage _strategyParams = strategyParams[quorumNumber];
 
@@ -405,25 +454,22 @@ contract StakeRegistry is StakeRegistryStorage {
         uint8 quorumNumber,
         StrategyParams[] memory _strategyParams
     ) internal {
-        require(_strategyParams.length > 0, "StakeRegistry._addStrategyParams: no strategies provided");
+        require(_strategyParams.length > 0, InputArrayLengthZero());
         uint256 numStratsToAdd = _strategyParams.length;
         uint256 numStratsExisting = strategyParams[quorumNumber].length;
         require(
             numStratsExisting + numStratsToAdd <= MAX_WEIGHING_FUNCTION_LENGTH,
-            "StakeRegistry._addStrategyParams: exceed MAX_WEIGHING_FUNCTION_LENGTH"
+            InputArrayLengthMismatch()
         );
         for (uint256 i = 0; i < numStratsToAdd; i++) {
             // fairly gas-expensive internal loop to make sure that the *same* strategy cannot be added multiple times
             for (uint256 j = 0; j < (numStratsExisting + i); j++) {
                 require(
                     strategyParams[quorumNumber][j].strategy != _strategyParams[i].strategy,
-                    "StakeRegistry._addStrategyParams: cannot add same strategy 2x"
+                    InputDuplicateStrategy()
                 );
             }
-            require(
-                _strategyParams[i].multiplier > 0,
-                "StakeRegistry._addStrategyParams: cannot add strategy with zero weight"
-            );
+            require(_strategyParams[i].multiplier > 0, InputMultiplierZero());
             strategyParams[quorumNumber].push(_strategyParams[i]);
             strategiesPerQuorum[quorumNumber].push(_strategyParams[i].strategy);
             emit StrategyAddedToQuorum(quorumNumber, _strategyParams[i].strategy);
@@ -459,14 +505,28 @@ contract StakeRegistry is StakeRegistryStorage {
          * - blockNumber should be >= the update block number
          * - the next update block number should be either 0 or strictly greater than blockNumber
          */
-        require(
-            blockNumber >= stakeUpdate.updateBlockNumber,
-            "StakeRegistry._validateStakeUpdateAtBlockNumber: stakeUpdate is from after blockNumber"
-        );
+        require(blockNumber >= stakeUpdate.updateBlockNumber, InvalidBlockNumber());
         require(
             stakeUpdate.nextUpdateBlockNumber == 0 || blockNumber < stakeUpdate.nextUpdateBlockNumber,
-            "StakeRegistry._validateStakeUpdateAtBlockNumber: there is a newer stakeUpdate available before blockNumber"
+            InvalidBlockNumber()
         );
+    }
+
+    /// Returns total Slashable stake for an operator per strategy that can have the weights applied based on strategy multipliers
+    function _getSlashableStakePerStrategy(uint8 quorumNumber, address operator) internal view returns (uint256[] memory) {
+        address[] memory operators = new address[](1);
+        operators[0] = operator;
+        uint32 beforeTimestamp = uint32(block.timestamp + slashableStakeLookAheadPerQuorum[quorumNumber]);
+
+        uint256[][] memory slashableShares = IAllocationManager(serviceManager.allocationManager())
+            .getMinimumSlashableStake(
+                OperatorSet(address(serviceManager), quorumNumber),
+                operators,
+                strategiesPerQuorum[quorumNumber],
+                beforeTimestamp
+            );
+
+        return slashableShares[0];
     }
 
     /**
@@ -479,15 +539,27 @@ contract StakeRegistry is StakeRegistryStorage {
         uint96 weight;
         uint256 stratsLength = strategyParamsLength(quorumNumber);
         StrategyParams memory strategyAndMultiplier;
+        uint256[] memory strategyShares;
 
-        uint256[] memory strategyShares = delegation.getOperatorShares(operator, strategiesPerQuorum[quorumNumber]);
-        for (uint256 i = 0; i < stratsLength; i++) {
-            // accessing i^th StrategyParams struct for the quorumNumber
-            strategyAndMultiplier = strategyParams[quorumNumber][i];
+        if (stakeTypePerQuorum[quorumNumber]== StakeType.TOTAL_SLASHABLE) {
+            strategyShares = _getSlashableStakePerStrategy(quorumNumber, operator);
+            for (uint256 i = 0; i < stratsLength; i++) {
+                strategyAndMultiplier = strategyParams[quorumNumber][i];
+                if (strategyShares[i] > 0) {
+                    weight += uint96(strategyShares[i] * strategyAndMultiplier.multiplier / WEIGHTING_DIVISOR);
+                }
+            }
+        } else {
+            /// M2 Concept of delegated stake
+            strategyShares = delegation.getOperatorShares(operator, strategiesPerQuorum[quorumNumber]);
+            for (uint256 i = 0; i < stratsLength; i++) {
+                // accessing i^th StrategyParams struct for the quorumNumber
+                strategyAndMultiplier = strategyParams[quorumNumber][i];
 
-            // add the weight from the shares for this strategy to the total weight
-            if (strategyShares[i] > 0) {
-                weight += uint96(strategyShares[i] * strategyAndMultiplier.multiplier / WEIGHTING_DIVISOR);
+                // add the weight from the shares for this strategy to the total weight
+                if (strategyShares[i] > 0) {
+                    weight += uint96(strategyShares[i] * strategyAndMultiplier.multiplier / WEIGHTING_DIVISOR);
+                }
             }
         }
 
@@ -504,6 +576,19 @@ contract StakeRegistry is StakeRegistryStorage {
     /*******************************************************************************
                             VIEW FUNCTIONS
     *******************************************************************************/
+
+    /**
+     * @notice Returns whether a quorum is an operator set quorum based on its stake type
+     * @dev A quorum is an operator set quorum if it has TOTAL_SLASHABLE stake type
+     * and is not an M2 quorum
+     * @param quorumNumber The quorum number to check
+     * @return True if the quorum is an operator set quorum
+     */
+    function isOperatorSetQuorum(uint8 quorumNumber) public view returns (bool) {
+        bool isM2 = IRegistryCoordinator(registryCoordinator).isM2Quorum(quorumNumber);
+        bool isOperatorSet = IRegistryCoordinator(registryCoordinator).isOperatorSetAVS();
+        return isOperatorSet && !isM2;
+    }
 
     /**
      * @notice This function computes the total weight of the @param operator in the quorum @param quorumNumber.
@@ -703,10 +788,10 @@ contract StakeRegistry is StakeRegistryStorage {
         uint32[] memory indices = new uint32[](quorumNumbers.length);
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
             uint8 quorumNumber = uint8(quorumNumbers[i]);
-            require(_quorumExists(quorumNumber), "StakeRegistry.getTotalStakeIndicesAtBlockNumber: quorum does not exist");
+            _checkQuorumExists(quorumNumber);
             require(
                 _totalStakeHistory[quorumNumber][0].updateBlockNumber <= blockNumber,
-                "StakeRegistry.getTotalStakeIndicesAtBlockNumber: quorum has no stake history at blockNumber"
+                EmptyStakeHistory()
             );
             uint256 length = _totalStakeHistory[quorumNumber].length;
             for (uint256 j = 0; j < length; j++) {
@@ -728,7 +813,40 @@ contract StakeRegistry is StakeRegistryStorage {
         emit OperatorSignAddressAdded(msg.sender, operatorSignAddr);
     }
 
+    /**
+     * @notice Sets the stake type for the registry for a specific quorum
+     * @param quorumNumber The quorum number to set the stake type for
+     * @param _stakeType The type of stake to track (TOTAL_DELEGATED, TOTAL_SLASHABLE, or BOTH)
+     */
+    function _setStakeType(uint8 quorumNumber, StakeType _stakeType) internal {
+        stakeTypePerQuorum[quorumNumber] = _stakeType;
+        emit StakeTypeSet(_stakeType);
+    }
+
+    /**
+     * @notice Sets the look ahead time for checking operator shares for a specific quorum
+     * @param quorumNumber The quorum number to set the look ahead period for
+     * @param _lookAheadDays The number of days to look ahead when checking shares
+     */
+    function _setLookAheadPeriod(uint8 quorumNumber, uint32 _lookAheadDays) internal {
+        uint32 oldLookAheadDays = slashableStakeLookAheadPerQuorum[quorumNumber];
+        slashableStakeLookAheadPerQuorum[quorumNumber] = _lookAheadDays;
+        emit LookAheadPeriodChanged(oldLookAheadDays, _lookAheadDays);
+    }
+
     function getOperatorSignAddress(address operator) external override view returns(address){
         return operatorSignAddrs[operator];
+    }
+
+    function _checkRegistryCoordinator() internal view {
+        require(msg.sender == address(registryCoordinator), OnlyRegistryCoordinator());
+    }
+
+    function _checkRegistryCoordinatorOwner() internal view {
+        require(msg.sender == IRegistryCoordinator(registryCoordinator).owner(), OnlyRegistryCoordinatorOwner());
+    }
+
+    function _checkQuorumExists(uint8 quorumNumber) internal view {
+        require(_quorumExists(quorumNumber), QuorumDoesNotExist());
     }
 }

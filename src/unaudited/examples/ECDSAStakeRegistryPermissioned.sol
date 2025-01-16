@@ -27,7 +27,9 @@ contract ECDSAStakeRegistryPermissioned is ECDSAStakeRegistry {
     /// @dev Custom error to signal that an operator is already allowlisted.
     error OperatorAlreadyAllowlisted();
 
-    constructor(IDelegationManager _delegationManager) ECDSAStakeRegistry(_delegationManager) {
+    constructor(
+        IDelegationManager _delegationManager
+    ) ECDSAStakeRegistry(_delegationManager) {
         // _disableInitializers();
     }
 

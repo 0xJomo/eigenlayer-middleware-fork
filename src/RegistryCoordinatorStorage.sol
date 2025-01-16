@@ -5,6 +5,7 @@ import {IBLSApkRegistry} from "./interfaces/IBLSApkRegistry.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
+import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
 import {ISocketRegistry} from "./interfaces/ISocketRegistry.sol";
 
@@ -40,6 +41,8 @@ abstract contract RegistryCoordinatorStorage is IRegistryCoordinator {
     IStakeRegistry public immutable stakeRegistry;
     /// @notice the Index Registry contract that will keep track of operators' indexes
     IIndexRegistry public immutable indexRegistry;
+    /// @notice the AVS Directory that tracks operator registrations to AVS and operator sets
+    IAVSDirectory public immutable avsDirectory;
     /// @notice the Socket Registry contract that will keep track of operators' sockets
     ISocketRegistry public immutable socketRegistry;
 
@@ -72,6 +75,14 @@ abstract contract RegistryCoordinatorStorage is IRegistryCoordinator {
     /// @notice the delay in seconds before an operator can reregister after being ejected
     uint256 public ejectionCooldown;
 
+    /// @notice Whether this AVS uses operator sets for registration
+    /// @dev If true, operators must register to operator sets via the AllocationManager
+    bool public isOperatorSetAVS;
+
+    /// @notice Mapping from quorum number to whether the quorum is an M2 quorum
+    /// @dev M2 quorums are pre-operator sets and track total delegated stake only
+    mapping(uint8 => bool) public isM2Quorum;
+
     constructor(
         IServiceManager _serviceManager,
         IStakeRegistry _stakeRegistry,
@@ -88,5 +99,5 @@ abstract contract RegistryCoordinatorStorage is IRegistryCoordinator {
 
     // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[39] private __GAP;
+    uint256[37] private __GAP;
 }

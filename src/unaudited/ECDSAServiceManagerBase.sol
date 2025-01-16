@@ -2,8 +2,6 @@
 pragma solidity ^0.8.12;
 
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ISignatureUtils} from "eigenlayer-contracts/src/contracts/interfaces/ISignatureUtils.sol";
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
 import {IServiceManager} from "../interfaces/IServiceManager.sol";
@@ -14,18 +12,23 @@ import {IStakeRegistry} from "../interfaces/IStakeRegistry.sol";
 import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
 import {Quorum} from "../interfaces/IECDSAStakeRegistryEventsAndErrors.sol";
 import {ECDSAStakeRegistry} from "../unaudited/ECDSAStakeRegistry.sol";
+import {IAVSRegistrar} from "eigenlayer-contracts/src/contracts/interfaces/IAVSRegistrar.sol";
+import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+
+
 
 abstract contract ECDSAServiceManagerBase is
     IServiceManager,
     OwnableUpgradeable
 {
-    using SafeERC20 for IERC20;
-
     /// @notice Address of the stake registry contract, which manages registration and stake recording.
     address public immutable stakeRegistry;
 
     /// @notice Address of the AVS directory contract, which manages AVS-related data for registered operators.
     address public immutable avsDirectory;
+
+    /// @notice Address of the AllocationManager contract
+    address public immutable allocationManager;
 
     /// @notice Address of the rewards coordinator contract, which handles rewards distributions.
     address internal immutable rewardsCoordinator;
@@ -41,10 +44,7 @@ abstract contract ECDSAServiceManagerBase is
      * This is used to restrict certain registration and deregistration functionality to the `stakeRegistry`
      */
     modifier onlyStakeRegistry() {
-        require(
-            msg.sender == stakeRegistry,
-            "ECDSAServiceManagerBase.onlyStakeRegistry: caller is not the stakeRegistry"
-        );
+        require(msg.sender == stakeRegistry, OnlyStakeRegistry());
         _;
     }
 
@@ -57,10 +57,7 @@ abstract contract ECDSAServiceManagerBase is
     }
 
     function _checkRewardsInitiator() internal view {
-        require(
-            msg.sender == rewardsInitiator,
-            "ECDSAServiceManagerBase.onlyRewardsInitiator: caller is not the rewards initiator"
-        );
+        require(msg.sender == rewardsInitiator, OnlyRewardsInitiator());
     }
 
     /**
@@ -74,12 +71,14 @@ abstract contract ECDSAServiceManagerBase is
         address _avsDirectory,
         address _stakeRegistry,
         address _rewardsCoordinator,
-        address _delegationManager
+        address _delegationManager,
+        address _allocationManager
     ) {
         avsDirectory = _avsDirectory;
         stakeRegistry = _stakeRegistry;
         rewardsCoordinator = _rewardsCoordinator;
         delegationManager = _delegationManager;
+        allocationManager = _allocationManager;
         _disableInitializers();
     }
 
@@ -202,75 +201,22 @@ abstract contract ECDSAServiceManagerBase is
         IRewardsCoordinator.RewardsSubmission[] calldata rewardsSubmissions
     ) internal virtual {
         for (uint256 i = 0; i < rewardsSubmissions.length; ++i) {
-            rewardsSubmissions[i].token.safeTransferFrom(
+            rewardsSubmissions[i].token.transferFrom(
                 msg.sender,
                 address(this),
                 rewardsSubmissions[i].amount
             );
-            rewardsSubmissions[i].token.safeIncreaseAllowance(
+            uint256 allowance = rewardsSubmissions[i].token.allowance(
+                address(this),
+                rewardsCoordinator
+            );
+            rewardsSubmissions[i].token.approve(
                 rewardsCoordinator,
-                rewardsSubmissions[i].amount
+                rewardsSubmissions[i].amount + allowance
             );
         }
 
-        IRewardsCoordinator(rewardsCoordinator).createAVSRewardsSubmission(
-            rewardsSubmissions
-        );
-    }
-
-    /**
-     * @notice Creates a new operator-directed rewards submission, to be split amongst the operators and
-     * set of stakers delegated to operators who are registered to this `avs`.
-     * @param operatorDirectedRewardsSubmissions The operator-directed rewards submissions being created.
-     */
-    function _createOperatorDirectedAVSRewardsSubmission(
-        IRewardsCoordinator.OperatorDirectedRewardsSubmission[]
-            calldata operatorDirectedRewardsSubmissions
-    ) internal virtual {
-        for (
-            uint256 i = 0;
-            i < operatorDirectedRewardsSubmissions.length;
-            ++i
-        ) {
-            // Calculate total amount of token to transfer
-            uint256 totalAmount = 0;
-            for (
-                uint256 j = 0;
-                j <
-                operatorDirectedRewardsSubmissions[i].operatorRewards.length;
-                ++j
-            ) {
-                totalAmount += operatorDirectedRewardsSubmissions[i]
-                    .operatorRewards[j]
-                    .amount;
-            }
-
-            // Transfer token to ServiceManager and approve RewardsCoordinator to transfer again
-            // in createOperatorDirectedAVSRewardsSubmission() call
-            operatorDirectedRewardsSubmissions[i].token.safeTransferFrom(
-                msg.sender,
-                address(this),
-                totalAmount
-            );
-            operatorDirectedRewardsSubmissions[i].token.safeIncreaseAllowance(
-                rewardsCoordinator,
-                totalAmount
-            );
-        }
-
-        IRewardsCoordinator(rewardsCoordinator)
-            .createOperatorDirectedAVSRewardsSubmission(
-                address(this),
-                operatorDirectedRewardsSubmissions
-            );
-    }
-
-    /**
-     * @notice Forwards a call to Eigenlayer's RewardsCoordinator contract to set the address of the entity that can call `processClaim` on behalf of this contract.
-     * @param claimer The address of the entity that can call `processClaim` on behalf of the earner.
-     */
-    function _setClaimerFor(address claimer) internal virtual {
-        IRewardsCoordinator(rewardsCoordinator).setClaimerFor(claimer);
+        IRewardsCoordinator(rewardsCoordinator).createAVSRewardsSubmission(rewardsSubmissions);
     }
 
     /**
@@ -290,6 +236,15 @@ abstract contract ECDSAServiceManagerBase is
             strategies[i] = address(quorum.strategies[i].strategy);
         }
         return strategies;
+    }
+
+    /**
+     * @notice Sets the AVS registrar address in the AllocationManager
+     * @param registrar The new AVS registrar address
+     * @dev Only callable by the registry coordinator
+     */
+    function setAVSRegistrar(IAVSRegistrar registrar) external onlyOwner {
+        IAllocationManager(allocationManager).setAVSRegistrar(address(this), registrar);
     }
 
     /**

@@ -9,6 +9,7 @@ import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
 import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
+import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
 
 /**
  * @title Storage variables for the `ServiceManagerBase` contract.
@@ -25,6 +26,7 @@ abstract contract ServiceManagerBaseStorage is IServiceManager, OwnableUpgradeab
     IRewardsCoordinator internal immutable _rewardsCoordinator;
     IRegistryCoordinator internal immutable _registryCoordinator;
     IStakeRegistry internal immutable _stakeRegistry;
+    IAllocationManager internal immutable _allocationManager;
 
     /**
      *
@@ -35,19 +37,33 @@ abstract contract ServiceManagerBaseStorage is IServiceManager, OwnableUpgradeab
     /// @notice The address of the entity that can initiate rewards
     address public rewardsInitiator;
 
-    /// @notice Sets the (immutable) `_avsDirectory`, `_rewardsCoordinator`, `_registryCoordinator`, and `_stakeRegistry` addresses
+    /// @notice The address of the slasher account
+    address public slasher;
+
+    /// @notice The address of the proposed slasher account
+    address public proposedSlasher;
+
+    /// @notice The timestamp when the slasher was proposed
+    uint256 public slasherProposalTimestamp;
+
+    /// @notice Boolean indicating if the migration has been finalized
+    bool public migrationFinalized;
+
+    /// @notice Sets the (immutable) `_avsDirectory`, `_rewardsCoordinator`, `_registryCoordinator`, `_stakeRegistry`, and `_allocationManager` addresses
     constructor(
         IAVSDirectory __avsDirectory,
         IRewardsCoordinator __rewardsCoordinator,
         IRegistryCoordinator __registryCoordinator,
-        IStakeRegistry __stakeRegistry
+        IStakeRegistry __stakeRegistry,
+        IAllocationManager __allocationManager
     ) {
         _avsDirectory = __avsDirectory;
         _rewardsCoordinator = __rewardsCoordinator;
         _registryCoordinator = __registryCoordinator;
         _stakeRegistry = __stakeRegistry;
+        _allocationManager = __allocationManager;
     }
 
     // storage gap for upgradeability
-    uint256[49] private __GAP;
+    uint256[45] private __GAP;
 }

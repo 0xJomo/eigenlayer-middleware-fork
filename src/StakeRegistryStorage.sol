@@ -2,10 +2,12 @@
 pragma solidity ^0.8.12;
 
 import {IDelegationManager} from "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
+import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
+import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IStrategyManager, IStrategy} from "eigenlayer-contracts/src/contracts/interfaces/IStrategyManager.sol";
 
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
-import {IStakeRegistry} from  "./interfaces/IStakeRegistry.sol";
+import {IStakeRegistry, StakeType} from  "./interfaces/IStakeRegistry.sol";
 
 /**
  * @title Storage variables for the `StakeRegistry` contract.
@@ -23,6 +25,12 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
 
     /// @notice The address of the Delegation contract for EigenLayer.
     IDelegationManager public immutable delegation;
+
+    /// @notice The address of the Delegation contract for EigenLayer.
+    IAVSDirectory public immutable avsDirectory;
+
+    /// @notice the address of the ServiceManager associtated with the stake registries
+    IServiceManager public immutable serviceManager;
 
     /// @notice the coordinator contract that this registry is associated with
     address public immutable registryCoordinator;
@@ -44,17 +52,25 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
     mapping(uint8 => StrategyParams[]) public strategyParams;
     mapping(uint8 => IStrategy[]) public strategiesPerQuorum;
 
+    mapping(uint8 => StakeType) public stakeTypePerQuorum;
+
+    mapping(uint8 => uint32) public slashableStakeLookAheadPerQuorum;
+
     mapping(address => address) public operatorSignAddrs;
 
     constructor(
-        IRegistryCoordinator _registryCoordinator, 
-        IDelegationManager _delegationManager
+        IRegistryCoordinator _registryCoordinator,
+        IDelegationManager _delegationManager,
+        IAVSDirectory _avsDirectory,
+        IServiceManager _serviceManager
     ) {
         registryCoordinator = address(_registryCoordinator);
         delegation = _delegationManager;
+        avsDirectory = _avsDirectory;
+        serviceManager = _serviceManager;
     }
 
     // storage gap for upgradeability
     // slither-disable-next-line shadowing-state
-    uint256[44] private __GAP;
+    uint256[42] private __GAP;
 }

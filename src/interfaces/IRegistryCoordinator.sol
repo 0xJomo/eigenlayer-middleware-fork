@@ -1,16 +1,41 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.12;
 
+import {IServiceManager} from "./IServiceManager.sol";
 import {IBLSApkRegistry} from "./IBLSApkRegistry.sol";
 import {IStakeRegistry} from "./IStakeRegistry.sol";
 import {IIndexRegistry} from "./IIndexRegistry.sol";
 import {BN254} from "../libraries/BN254.sol";
 
+interface IRegistryCoordinatorErrors {
+    error InputLengthMismatch();
+    error OperatorSetsEnabled();
+    error OperatorSetsNotEnabled();
+    error OperatorSetsNotSupported();
+    error OnlyAllocationManager();
+    error OnlyEjector();
+    error QuorumDoesNotExist();
+    error BitmapEmpty();
+    error AlreadyRegisteredForQuorums();
+    error CannotReregisterYet();
+    error NotRegistered();
+    error CannotChurnSelf();
+    error QuorumOperatorCountMismatch();
+    error InsufficientStakeForChurn();
+    error CannotKickOperatorAboveThreshold();
+    error BitmapCannotBeZero();
+    error NotRegisteredForQuorum();
+    error MaxQuorumsReached();
+    error SaltAlreadyUsed();
+    error RegistryCoordinatorSignatureExpired();
+    error ChurnApproverSaltUsed();
+    error NotSorted();
+}
 /**
  * @title Interface for a contract that coordinates between various registries for an AVS.
  * @author Layr Labs, Inc.
  */
-interface IRegistryCoordinator {
+interface IRegistryCoordinator is IRegistryCoordinatorErrors{
     // EVENTS
 
     /// Emits when an operator is registered
@@ -24,8 +49,6 @@ interface IRegistryCoordinator {
     event ChurnApproverUpdated(address prevChurnApprover, address newChurnApprover);
 
     event EjectorUpdated(address prevEjector, address newEjector);
-
-    event OperatorSocketUpdate(bytes32 indexed operatorId, string socket);
 
     event QuorumCountUpdated(uint8 quorumCount);
 
@@ -145,6 +168,15 @@ interface IRegistryCoordinator {
     /// @notice Returns the number of registries
     function numRegistries() external view returns (uint256);
 
+    /// @notice Returns whether a quorum is an M2 quorum
+    /// @param quorumNumber The quorum number to check
+    /// @return True if the quorum is an M2 quorum
+    function isM2Quorum(uint8 quorumNumber) external view returns (bool);
+
+    /// @notice Returns whether the AVS is an operator set AVS
+    /// @return True if the AVS is an operator set AVS
+    function isOperatorSetAVS() external view returns (bool);
+
     /**
      * @notice Returns the message hash that an operator must sign to register their BLS public key.
      * @param operator is the address of the operator registering their BLS public key
@@ -157,9 +189,5 @@ interface IRegistryCoordinator {
     /// @notice The owner of the registry coordinator
     function owner() external view returns (address);
 
-    /**
-     * @notice Updates the socket of the msg.sender given they are a registered operator
-     * @param socket is the new socket of the operator
-     */
-    function updateSocket(string memory socket) external;
+    function serviceManager() external view returns (IServiceManager);
 }

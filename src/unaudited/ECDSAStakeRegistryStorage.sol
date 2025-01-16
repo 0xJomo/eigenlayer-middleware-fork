@@ -5,7 +5,9 @@ import {IDelegationManager} from "eigenlayer-contracts/src/contracts/interfaces/
 import {CheckpointsUpgradeable} from "@openzeppelin-upgrades/contracts/utils/CheckpointsUpgradeable.sol";
 import {ECDSAStakeRegistryEventsAndErrors, Quorum, StrategyParams} from "../interfaces/IECDSAStakeRegistryEventsAndErrors.sol";
 
-abstract contract ECDSAStakeRegistryStorage is ECDSAStakeRegistryEventsAndErrors {
+abstract contract ECDSAStakeRegistryStorage is
+    ECDSAStakeRegistryEventsAndErrors
+{
     /// @notice Manages staking delegations through the DelegationManager interface
     IDelegationManager internal immutable DELEGATION_MANAGER;
 

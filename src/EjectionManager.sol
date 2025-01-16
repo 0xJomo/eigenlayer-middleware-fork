@@ -13,7 +13,10 @@ import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 contract EjectionManager is IEjectionManager, OwnableUpgradeable{
 
     /// @notice The basis point denominator for the ejectable stake percent
-    uint16 internal constant BIPS_DENOMINATOR = 10000;
+    uint16 internal constant BIPS_DENOMINATOR = 10_000;
+
+    /// @notice The max number of quorums
+    uint8 internal constant MAX_QUORUM_COUNT = 192;
 
     /// @notice the RegistryCoordinator contract that is the entry point for ejection
     IRegistryCoordinator public immutable registryCoordinator;
@@ -64,7 +67,7 @@ contract EjectionManager is IEjectionManager, OwnableUpgradeable{
      * @dev The owner can eject operators without recording of stake ejection
      */
     function ejectOperators(bytes32[][] memory _operatorIds) external {
-        require(isEjector[msg.sender] || msg.sender == owner(), "Ejector: Only owner or ejector can eject");
+        require(isEjector[msg.sender] || msg.sender == owner(), OnlyOwnerOrEjector());
 
         for(uint i = 0; i < _operatorIds.length; ++i) {
             uint8 quorumNumber = uint8(i);

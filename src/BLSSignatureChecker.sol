@@ -31,7 +31,7 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
     bool public staleStakesForbidden;
 
     modifier onlyCoordinatorOwner() {
-        require(msg.sender == registryCoordinator.owner(), "BLSSignatureChecker.onlyCoordinatorOwner: caller is not the owner of the registryCoordinator");
+        require(msg.sender == registryCoordinator.owner(), OnlyRegistryCoordinatorOwner());
         _;
     }
 
@@ -86,30 +86,24 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
         bytes calldata quorumNumbers,
         uint32 referenceBlockNumber, 
         NonSignerStakesAndSignature memory params
-    ) 
-        public 
-        view
-        returns (
-            QuorumStakeTotals memory,
-            bytes32
-        )
-    {
-        require(quorumNumbers.length != 0, "BLSSignatureChecker.checkSignatures: empty quorum input");
+    ) public view returns (QuorumStakeTotals memory, bytes32) {
+        require(quorumNumbers.length != 0, InputEmptyQuorumNumbers());
 
         require(
             (quorumNumbers.length == params.quorumApks.length) &&
-            (quorumNumbers.length == params.quorumApkIndices.length) &&
-            (quorumNumbers.length == params.totalStakeIndices.length) &&
-            (quorumNumbers.length == params.nonSignerStakeIndices.length),
-            "BLSSignatureChecker.checkSignatures: input quorum length mismatch"
+                (quorumNumbers.length == params.quorumApkIndices.length) &&
+                (quorumNumbers.length == params.totalStakeIndices.length) &&
+                (quorumNumbers.length == params.nonSignerStakeIndices.length),
+            InputArrayLengthMismatch()
         );
 
         require(
-            params.nonSignerPubkeys.length == params.nonSignerQuorumBitmapIndices.length,
-            "BLSSignatureChecker.checkSignatures: input nonsigner length mismatch"
+            params.nonSignerPubkeys.length ==
+                params.nonSignerQuorumBitmapIndices.length,
+            InputNonSignerLengthMismatch()
         );
 
-        require(referenceBlockNumber < uint32(block.number), "BLSSignatureChecker.checkSignatures: invalid reference block");
+        require(referenceBlockNumber < uint32(block.number), InvalidReferenceBlocknumber());
 
         // This method needs to calculate the aggregate pubkey for all signing operators across
         // all signing quorums. To do that, we can query the aggregate pubkey for each quorum
@@ -142,8 +136,9 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
                 nonSigners.pubkeyHashes[j] = params.nonSignerPubkeys[j].hashG1Point();
                 if (j != 0) {
                     require(
-                        uint256(nonSigners.pubkeyHashes[j]) > uint256(nonSigners.pubkeyHashes[j - 1]),
-                        "BLSSignatureChecker.checkSignatures: nonSignerPubkeys not sorted"
+                        uint256(nonSigners.pubkeyHashes[j]) >
+                            uint256(nonSigners.pubkeyHashes[j - 1]),
+                        NonSignerPubkeysNotSorted()
                     );
                 }
 
@@ -187,8 +182,12 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
                 // is within withdrawalDelayBlocks
                 if (_staleStakesForbidden) {
                     require(
-                        registryCoordinator.quorumUpdateBlockNumber(uint8(quorumNumbers[i])) + withdrawalDelayBlocks > referenceBlockNumber,
-                        "BLSSignatureChecker.checkSignatures: StakeRegistry updates must be within withdrawalDelayBlocks window"
+                        registryCoordinator.quorumUpdateBlockNumber(
+                            uint8(quorumNumbers[i])
+                        ) +
+                            withdrawalDelayBlocks >
+                            referenceBlockNumber,
+                        StaleStakesForbidden()
                     );
                 }
 
@@ -201,7 +200,7 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
                             blockNumber: referenceBlockNumber,
                             index: params.quorumApkIndices[i]
                         }),
-                    "BLSSignatureChecker.checkSignatures: quorumApk hash in storage does not match provided quorum apk"
+                    InvalidQuorumApkHash()
                 );
                 apk = apk.plus(params.quorumApks[i]);
 
@@ -238,14 +237,17 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
         }
         {
             // verify the signature
-            (bool pairingSuccessful, bool signatureIsValid) = trySignatureAndApkVerification(
-                msgHash, 
-                apk, 
-                params.apkG2, 
-                params.sigma
-            );
-            require(pairingSuccessful, "BLSSignatureChecker.checkSignatures: pairing precompile call failed");
-            require(signatureIsValid, "BLSSignatureChecker.checkSignatures: signature is invalid");
+            (
+                bool pairingSuccessful,
+                bool signatureIsValid
+            ) = trySignatureAndApkVerification(
+                    msgHash,
+                    apk,
+                    params.apkG2,
+                    params.sigma
+                );
+            require(pairingSuccessful, InvalidBLSPairingKey());
+            require(signatureIsValid, InvalidBLSSignature());
         }
         // set signatoryRecordHash variable used for fraudproofs
         bytes32 signatoryRecordHash = keccak256(abi.encodePacked(referenceBlockNumber, nonSigners.pubkeyHashes));
