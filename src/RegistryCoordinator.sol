@@ -13,8 +13,6 @@ import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
 import {ISocketRegistry} from "./interfaces/ISocketRegistry.sol";
-
-import {EIP1271SignatureUtils} from "./libraries/EIP1271SignatureUtils.sol";
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
 import {BN254} from "./libraries/BN254.sol";
 import {SignatureCheckerLib} from "./libraries/SignatureCheckerLib.sol";
@@ -909,9 +907,15 @@ contract RegistryCoordinator is
         isChurnApproverSaltUsed[churnApproverSignature.salt] = true;    
 
         // check the churnApprover's signature 
-        EIP1271SignatureUtils.checkSignature_EIP1271(
-            churnApprover, 
-            calculateOperatorChurnApprovalDigestHash(registeringOperator, registeringOperatorId, operatorKickParams, churnApproverSignature.salt, churnApproverSignature.expiry), 
+        SignatureCheckerLib.isValidSignature(
+            churnApprover,
+            calculateOperatorChurnApprovalDigestHash(
+                registeringOperator,
+                registeringOperatorId,
+                operatorKickParams,
+                churnApproverSignature.salt,
+                churnApproverSignature.expiry
+            ),
             churnApproverSignature.signature
         );
     }
