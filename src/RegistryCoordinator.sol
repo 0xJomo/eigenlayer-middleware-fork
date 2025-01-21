@@ -293,38 +293,114 @@ contract RegistryCoordinator is
         // Enable operator sets mode
         isOperatorSetAVS = true;
     }
+    enum RegistrationType {
+        NORMAL,
+        CHURN
+    }
+
+    error InvalidRegistrationType();
 
     function registerOperator(
         address operator,
         uint32[] memory operatorSetIds,
-        bytes memory data
+        bytes calldata data
     ) external override onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR) {
         require(isUsingOperatorSets(), OperatorSetsNotEnabled());
         for (uint256 i = 0; i < operatorSetIds.length; i++) {
             require(!isM2Quorum[uint8(operatorSetIds[i])], OperatorSetsNotSupported());
         }
         _checkAllocationManager();
-
-        // Decode registration data from bytes
-        (
-            string memory socket,
-            IBLSApkRegistry.PubkeyRegistrationParams memory params
-        ) = abi.decode(data, (string, IBLSApkRegistry.PubkeyRegistrationParams));
-
-        // Get operator ID from BLS registry
-        bytes32 operatorId = _getOrCreateOperatorId(operator, params);
         bytes memory quorumNumbers = new bytes(operatorSetIds.length);
         for (uint256 i = 0; i < operatorSetIds.length; i++) {
             quorumNumbers[i] = bytes1(uint8(operatorSetIds[i]));
         }
 
-        // Register operator with decoded parameters
-        _registerOperatorToOperatorSet({
-            operator: operator,
-            operatorId: operatorId,
-            quorumNumbers: quorumNumbers,
-            socket: socket
+        // Handle churn or normal registration based on first byte in `data`
+        RegistrationType registrationType = abi.decode(data[0:1], (RegistrationType));
+        if (registrationType == RegistrationType.NORMAL) {
+            (, string memory socket, IBLSApkRegistry.PubkeyRegistrationParams memory params) = abi.decode(data, (RegistrationType, string, IBLSApkRegistry.PubkeyRegistrationParams));
+            bytes32 operatorId = _getOrCreateOperatorId(operator, params);
+            _registerOperatorToOperatorSet(operator, operatorId, quorumNumbers, socket);
+        } else if (registrationType == RegistrationType.CHURN) {
+            // Decode registration data from bytes
+            (
+                ,
+                string memory socket,
+                IBLSApkRegistry.PubkeyRegistrationParams memory params,
+                OperatorKickParam[] memory operatorKickParams,
+                SignatureWithSaltAndExpiry memory churnApproverSignature
+            ) = abi.decode(
+                data,
+                (
+                    RegistrationType,
+                    string,
+                    IBLSApkRegistry.PubkeyRegistrationParams,
+                    OperatorKickParam[],
+                    SignatureWithSaltAndExpiry
+                )
+            );
+
+            _registerOperatorWithChurn(operator, quorumNumbers, socket, params, operatorKickParams, churnApproverSignature);
+        } else {
+            revert InvalidRegistrationType();
+        }
+    }
+
+    function _registerOperatorWithChurn(
+        address operator,
+        bytes memory quorumNumbers,
+        string memory socket,
+        IBLSApkRegistry.PubkeyRegistrationParams memory params,
+        OperatorKickParam[] memory operatorKickParams,
+        SignatureWithSaltAndExpiry memory churnApproverSignature
+    ) internal virtual {
+        require(operatorKickParams.length == quorumNumbers.length, InputLengthMismatch());
+
+        /**
+         * If the operator has NEVER registered a pubkey before, use `params` to register
+         * their pubkey in blsApkRegistry
+         *
+         * If the operator HAS registered a pubkey, `params` is ignored and the pubkey hash
+         * (operatorId) is fetched instead
+         */
+        bytes32 operatorId = _getOrCreateOperatorId(operator, params);
+
+        // Verify the churn approver's signature for the registering operator and kick params
+        _verifyChurnApproverSignature({
+            registeringOperator: operator,
+            registeringOperatorId: operatorId,
+            operatorKickParams: operatorKickParams,
+            churnApproverSignature: churnApproverSignature
         });
+
+        // Register the operator in each of the registry contracts and update the operator's
+        // quorum bitmap and registration status
+        RegisterResults memory results = _registerOperatorToOperatorSet(operator, operatorId, quorumNumbers, socket);
+
+        // Check that each quorum's operator count is below the configured maximum. If the max
+        // is exceeded, use `operatorKickParams` to deregister an existing operator to make space
+        for (uint256 i = 0; i < quorumNumbers.length; i++) {
+            OperatorSetParam memory operatorSetParams = _quorumParams[uint8(quorumNumbers[i])];
+
+            /**
+             * If the new operator count for any quorum exceeds the maximum, validate
+             * that churn can be performed, then deregister the specified operator
+             */
+            if (results.numOperatorsPerQuorum[i] > operatorSetParams.maxOperatorCount) {
+                _validateChurn({
+                    quorumNumber: uint8(quorumNumbers[i]),
+                    totalQuorumStake: results.totalStakes[i],
+                    newOperator: operator,
+                    newOperatorStake: results.operatorStakes[i],
+                    kickParams: operatorKickParams[i],
+                    setParams: operatorSetParams
+                });
+
+                bytes memory singleQuorumNumber = new bytes(1);
+                singleQuorumNumber[0] = quorumNumbers[i];
+                _deregisterOperator(operatorKickParams[i].operator, singleQuorumNumber);
+            }
+        }
     }
 
     function deregisterOperator(
@@ -554,7 +630,7 @@ contract RegistryCoordinator is
      * seconds afer ejection before registering for any quorum
      * @param _ejectionCooldown the new ejection cooldown in seconds
      * @dev only callable by the owner
-     */
+    */
     function setEjectionCooldown(uint256 _ejectionCooldown) external onlyOwner {
         ejectionCooldown = _ejectionCooldown;
     }
