@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.27;
 
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 import {IBLSApkRegistry} from "./interfaces/IBLSApkRegistry.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
@@ -40,7 +40,7 @@ contract OperatorStateRetriever {
      *            was a part of at `blockNumber`, an ordered list of operators.
      */
     function getOperatorState(
-        IRegistryCoordinator registryCoordinator,
+        ISlashingRegistryCoordinator registryCoordinator,
         bytes32 operatorId,
         uint32 blockNumber
     ) external view returns (uint256, Operator[][] memory) {
@@ -66,7 +66,7 @@ contract OperatorStateRetriever {
      * @return 2d array of Operators. For each quorum, an ordered list of Operators
      */
     function getOperatorState(
-        IRegistryCoordinator registryCoordinator,
+        ISlashingRegistryCoordinator registryCoordinator,
         bytes memory quorumNumbers,
         uint32 blockNumber
     ) public view returns (Operator[][] memory) {
@@ -109,7 +109,7 @@ contract OperatorStateRetriever {
      *         4) the indices of the quorum apks for each of the provided quorums at the given blocknumber
      */
     function getCheckSignaturesIndices(
-        IRegistryCoordinator registryCoordinator,
+        ISlashingRegistryCoordinator registryCoordinator,
         uint32 referenceBlockNumber,
         bytes calldata quorumNumbers,
         bytes32[] calldata nonSignerOperatorIds
@@ -185,7 +185,7 @@ contract OperatorStateRetriever {
      * @param blockNumber is the block number to get the quorumBitmaps for
      */
     function getQuorumBitmapsAtBlockNumber(
-        IRegistryCoordinator registryCoordinator,
+        ISlashingRegistryCoordinator registryCoordinator,
         bytes32[] memory operatorIds,
         uint32 blockNumber
     ) external view returns (uint256[] memory) {
@@ -207,7 +207,7 @@ contract OperatorStateRetriever {
      * @dev if an operator is not registered, the operatorId will be 0
      */
     function getBatchOperatorId(
-        IRegistryCoordinator registryCoordinator,
+        ISlashingRegistryCoordinator registryCoordinator,
         address[] memory operators
     ) external view returns (bytes32[] memory operatorIds) {
         operatorIds = new bytes32[](operators.length);
@@ -223,7 +223,7 @@ contract OperatorStateRetriever {
      * @dev if an operator is not registered, the operator address will be 0
      */
     function getBatchOperatorFromId(
-        IRegistryCoordinator registryCoordinator,
+        ISlashingRegistryCoordinator registryCoordinator,
         bytes32[] memory operatorIds
     ) external view returns (address[] memory operators) {
         operators = new address[](operatorIds.length);

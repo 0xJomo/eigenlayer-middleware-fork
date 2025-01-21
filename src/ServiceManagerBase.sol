@@ -15,7 +15,7 @@ import {IPermissionController} from
 
 import {ServiceManagerBaseStorage} from "./ServiceManagerBaseStorage.sol";
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
@@ -47,7 +47,7 @@ abstract contract ServiceManagerBase is ServiceManagerBaseStorage {
     constructor(
         IAVSDirectory __avsDirectory,
         IRewardsCoordinator __rewardsCoordinator,
-        IRegistryCoordinator __registryCoordinator,
+        ISlashingRegistryCoordinator __registryCoordinator,
         IStakeRegistry __stakeRegistry,
         IPermissionController __permissionController,
         IAllocationManager __allocationManager

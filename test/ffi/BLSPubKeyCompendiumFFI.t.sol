@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import "../../src/BLSApkRegistry.sol";
 import "../ffi/util/G2Operations.sol";
 import {IBLSApkRegistry} from "../../src/interfaces/IBLSApkRegistry.sol";
+import {ISlashingRegistryCoordinator} from "../../src/interfaces/ISlashingRegistryCoordinator.sol";
 
 contract BLSApkRegistryFFITests is G2Operations {
     using BN254 for BN254.G1Point;
@@ -12,7 +13,7 @@ contract BLSApkRegistryFFITests is G2Operations {
     Vm cheats = Vm(VM_ADDRESS);
 
     BLSApkRegistry blsApkRegistry;
-    IRegistryCoordinator registryCoordinator;
+    ISlashingRegistryCoordinator registryCoordinator;
 
     uint256 privKey;
     IBLSApkRegistry.PubkeyRegistrationParams pubkeyRegistrationParams;

@@ -160,8 +160,8 @@ contract User is Test {
 
         bytes memory allQuorums = churnBitmap.plus(standardBitmap).bitmapToBytesArray();
 
-        IRegistryCoordinator.OperatorKickParam[] memory kickParams =
-            new IRegistryCoordinator.OperatorKickParam[](allQuorums.length);
+        ISlashingRegistryCoordinator.OperatorKickParam[] memory kickParams
+            = new ISlashingRegistryCoordinator.OperatorKickParam[](allQuorums.length);
 
         // this constructs OperatorKickParam[] in ascending quorum order
         // (yikes)
@@ -169,20 +169,22 @@ contract User is Test {
         uint256 stdIdx;
         while (churnIdx + stdIdx < allQuorums.length) {
             if (churnIdx == churnQuorums.length) {
-                kickParams[churnIdx + stdIdx] =
-                    IRegistryCoordinator.OperatorKickParam({quorumNumber: 0, operator: address(0)});
+                kickParams[churnIdx + stdIdx] = ISlashingRegistryCoordinator.OperatorKickParam({
+                    quorumNumber: 0,
+                    operator: address(0)
+                });
                 stdIdx++;
-            } else if (
-                stdIdx == standardQuorums.length || churnQuorums[churnIdx] < standardQuorums[stdIdx]
-            ) {
-                kickParams[churnIdx + stdIdx] = IRegistryCoordinator.OperatorKickParam({
+            } else if (stdIdx == standardQuorums.length || churnQuorums[churnIdx] < standardQuorums[stdIdx]) {
+                kickParams[churnIdx + stdIdx] = ISlashingRegistryCoordinator.OperatorKickParam({
                     quorumNumber: uint8(churnQuorums[churnIdx]),
                     operator: address(churnTargets[churnIdx])
                 });
                 churnIdx++;
             } else if (standardQuorums[stdIdx] < churnQuorums[churnIdx]) {
-                kickParams[churnIdx + stdIdx] =
-                    IRegistryCoordinator.OperatorKickParam({quorumNumber: 0, operator: address(0)});
+                kickParams[churnIdx + stdIdx] = ISlashingRegistryCoordinator.OperatorKickParam({
+                    quorumNumber: 0,
+                    operator: address(0)
+                });
                 stdIdx++;
             } else {
                 revert("User.registerOperatorWithChurn: malformed input");

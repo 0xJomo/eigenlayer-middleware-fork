@@ -81,7 +81,7 @@ contract OperatorStateRetrieverUnitTests is MockAVSDeployer {
 
     function test_getOperatorState_revert_quorumNotCreatedAtReferenceBlockNumber() public {
         cheats.roll(registrationBlockNumber);
-        IRegistryCoordinator.OperatorSetParam memory operatorSetParams = IRegistryCoordinator
+        ISlashingRegistryCoordinator.OperatorSetParam memory operatorSetParams = ISlashingRegistryCoordinator
             .OperatorSetParam({
             maxOperatorCount: defaultMaxOperatorCount,
             kickBIPsOfOperatorStake: defaultKickBIPsOfOperatorStake,
@@ -223,7 +223,7 @@ contract OperatorStateRetrieverUnitTests is MockAVSDeployer {
         bytes32[] memory nonSignerOperatorIds = new bytes32[](1);
         nonSignerOperatorIds[0] = defaultOperatorId;
 
-        IRegistryCoordinator.OperatorSetParam memory operatorSetParams = IRegistryCoordinator
+        ISlashingRegistryCoordinator.OperatorSetParam memory operatorSetParams = ISlashingRegistryCoordinator
             .OperatorSetParam({
             maxOperatorCount: defaultMaxOperatorCount,
             kickBIPsOfOperatorStake: defaultKickBIPsOfOperatorStake,
@@ -253,6 +253,11 @@ contract OperatorStateRetrieverUnitTests is MockAVSDeployer {
         uint256 quorumBitmapOne = 1;
         uint256 quorumBitmapTwo = 2;
         uint256 quorumBitmapThree = 3;
+
+        assertFalse(
+            registryCoordinator.isOperatorSetAVS(),
+            "isOperatorSetAVS should be false"
+        );
 
         cheats.roll(registrationBlockNumber);
         _registerOperatorWithCoordinator(defaultOperator, quorumBitmapOne, defaultPubKey);

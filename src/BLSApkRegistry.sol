@@ -3,7 +3,7 @@ pragma solidity ^0.8.27;
 
 import {BLSApkRegistryStorage} from "./BLSApkRegistryStorage.sol";
 
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 
 import {BN254} from "./libraries/BN254.sol";
 
@@ -18,8 +18,8 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
 
     /// @notice Sets the (immutable) `registryCoordinator` address
     constructor(
-        IRegistryCoordinator _registryCoordinator
-    ) BLSApkRegistryStorage(_registryCoordinator) {}
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator
+    ) BLSApkRegistryStorage(_slashingRegistryCoordinator) {}
 
     /**
      *

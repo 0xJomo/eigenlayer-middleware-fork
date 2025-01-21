@@ -2,8 +2,10 @@
 pragma solidity ^0.8.27;
 
 import "../../src/interfaces/IRegistryCoordinator.sol";
+import "../../src/interfaces/ISlashingRegistryCoordinator.sol";
 
-contract RegistryCoordinatorMock is IRegistryCoordinator {
+
+contract RegistryCoordinatorMock is ISlashingRegistryCoordinator, IRegistryCoordinator {
     function blsApkRegistry() external view returns (IBLSApkRegistry) {}
 
     function ejectOperator(address operator, bytes calldata quorumNumbers) external {}
@@ -37,9 +39,7 @@ contract RegistryCoordinatorMock is IRegistryCoordinator {
     ) external view returns (address) {}
 
     /// @notice Returns the status for the given `operator`
-    function getOperatorStatus(
-        address operator
-    ) external view returns (IRegistryCoordinator.OperatorStatus) {}
+    function getOperatorStatus(address operator) external view returns (OperatorStatus){}
 
     /// @notice Returns task number from when `operator` has been registered.
     function getFromTaskNumberForOperator(
@@ -107,4 +107,26 @@ contract RegistryCoordinatorMock is IRegistryCoordinator {
     function isOperatorSetAVS() external view returns (bool) {
         return false;
     }
+
+    function accountIdentifier() external view returns (address) {}
+
+    function deregisterOperator(bytes memory quorumNumbers) external {}
+
+    function enableOperatorSets() external {}
+
+    function registerOperator(
+        bytes memory quorumNumbers,
+        string memory socket,
+        IBLSApkRegistry.PubkeyRegistrationParams memory params,
+        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature
+    ) external {}
+
+    function registerOperatorWithChurn(
+        bytes calldata quorumNumbers,
+        string memory socket,
+        IBLSApkRegistry.PubkeyRegistrationParams memory params,
+        ISlashingRegistryCoordinator.OperatorKickParam[] memory operatorKickParams,
+        ISignatureUtils.SignatureWithSaltAndExpiry memory churnApproverSignature,
+        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature
+    ) external {}
 }

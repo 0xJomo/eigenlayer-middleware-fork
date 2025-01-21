@@ -340,20 +340,16 @@ abstract contract IntegrationDeployer is Test, IUserDeployer {
         cheats.stopPrank();
 
         StakeRegistry stakeRegistryImplementation = new StakeRegistry(
-            IRegistryCoordinator(registryCoordinator),
-            IDelegationManager(delegationManager),
-            IAVSDirectory(avsDirectory),
-            allocationManager,
-            IServiceManager(serviceManager)
+            ISlashingRegistryCoordinator(registryCoordinator), IDelegationManager(delegationManager), IAVSDirectory(avsDirectory), allocationManager
         );
         BLSApkRegistry blsApkRegistryImplementation =
-            new BLSApkRegistry(IRegistryCoordinator(registryCoordinator));
+            new BLSApkRegistry(ISlashingRegistryCoordinator(registryCoordinator));
         IndexRegistry indexRegistryImplementation =
-            new IndexRegistry(IRegistryCoordinator(registryCoordinator));
+            new IndexRegistry(ISlashingRegistryCoordinator(registryCoordinator));
         ServiceManagerMock serviceManagerImplementation = new ServiceManagerMock(
             IAVSDirectory(avsDirectory),
             rewardsCoordinator,
-            IRegistryCoordinator(registryCoordinator),
+            ISlashingRegistryCoordinator(registryCoordinator),
             stakeRegistry,
             permissionController,
             allocationManager
@@ -399,16 +395,12 @@ abstract contract IntegrationDeployer is Test, IUserDeployer {
             TransparentUpgradeableProxy(payable(address(registryCoordinator))),
             address(registryCoordinatorImplementation),
             abi.encodeWithSelector(
-                RegistryCoordinator.initialize.selector,
+                SlashingRegistryCoordinator.initialize.selector,
                 registryCoordinatorOwner,
                 churnApprover,
                 ejector,
                 0, /*initialPausedStatus*/
-                new IRegistryCoordinator.OperatorSetParam[](0),
-                new uint96[](0),
-                new IStakeRegistry.StrategyParams[][](0),
-                quorumStakeTypes,
-                slashableStakeQuorumLookAheadPeriods
+                address(serviceManager) // _accountIdentifier
             )
         );
 

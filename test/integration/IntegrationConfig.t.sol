@@ -158,8 +158,7 @@ contract IntegrationConfig is IntegrationDeployer, G2Operations, Constants {
         emit log_named_uint("_configRand: number of quorums being initialized", quorumCount);
 
         // Default OperatorSetParams for all quorums
-        IRegistryCoordinator.OperatorSetParam memory operatorSet = IRegistryCoordinator
-            .OperatorSetParam({
+        ISlashingRegistryCoordinator.OperatorSetParam memory operatorSet = ISlashingRegistryCoordinator.OperatorSetParam({
             maxOperatorCount: MAX_OPERATOR_COUNT,
             kickBIPsOfOperatorStake: KICK_BIPS_OPERATOR_STAKE,
             kickBIPsOfTotalStake: KICK_BIPS_TOTAL_STAKE
@@ -318,8 +317,8 @@ contract IntegrationConfig is IntegrationDeployer, G2Operations, Constants {
         for (uint256 i = 0; i < churnQuorums.length; i++) {
             uint8 quorum = uint8(churnQuorums[i]);
 
-            IRegistryCoordinator.OperatorSetParam memory params =
-                registryCoordinator.getOperatorSetParams(quorum);
+            ISlashingRegistryCoordinator.OperatorSetParam memory params
+                = registryCoordinator.getOperatorSetParams(quorum);
 
             // Sanity check - make sure we're at the operator cap
             uint32 curNumOperators = indexRegistry.totalOperatorsForQuorum(quorum);
@@ -365,7 +364,7 @@ contract IntegrationConfig is IntegrationDeployer, G2Operations, Constants {
     /// From RegistryCoordinator._individualKickThreshold
     function _individualKickThreshold(
         uint96 operatorStake,
-        IRegistryCoordinator.OperatorSetParam memory setParams
+        ISlashingRegistryCoordinator.OperatorSetParam memory setParams
     ) internal pure returns (uint96) {
         return operatorStake * setParams.kickBIPsOfOperatorStake / BIPS_DENOMINATOR;
     }
@@ -373,7 +372,7 @@ contract IntegrationConfig is IntegrationDeployer, G2Operations, Constants {
     /// From RegistryCoordinator._totalKickThreshold
     function _totalKickThreshold(
         uint96 totalStake,
-        IRegistryCoordinator.OperatorSetParam memory setParams
+        ISlashingRegistryCoordinator.OperatorSetParam memory setParams
     ) internal pure returns (uint96) {
         return totalStake * setParams.kickBIPsOfTotalStake / BIPS_DENOMINATOR;
     }
@@ -565,10 +564,8 @@ contract IntegrationConfig is IntegrationDeployer, G2Operations, Constants {
      * @dev Uses _randFillType to determine how many operators to register for a quorum initially
      * @return The number of operators to register
      */
-    function _randInitialOperators(
-        IRegistryCoordinator.OperatorSetParam memory operatorSet
-    ) private returns (uint256) {
-        uint256 fillTypeFlag = _randValue(fillTypeFlags);
+    function _randInitialOperators(ISlashingRegistryCoordinator.OperatorSetParam memory operatorSet) private returns (uint) {
+        uint fillTypeFlag = _randValue(fillTypeFlags);
 
         if (fillTypeFlag == EMPTY) {
             return 0;

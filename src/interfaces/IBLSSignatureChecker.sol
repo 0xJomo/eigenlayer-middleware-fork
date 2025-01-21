@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.27;
 
-import {IRegistryCoordinator} from "./IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./ISlashingRegistryCoordinator.sol";
 import {IBLSApkRegistry} from "./IBLSApkRegistry.sol";
 import {IStakeRegistry, IDelegationManager} from "./IStakeRegistry.sol";
 
@@ -68,7 +68,7 @@ interface IBLSSignatureChecker is IBLSSignatureCheckerErrors {
 
     // CONSTANTS & IMMUTABLES
 
-    function registryCoordinator() external view returns (IRegistryCoordinator);
+    function registryCoordinator() external view returns (ISlashingRegistryCoordinator);
     function stakeRegistry() external view returns (IStakeRegistry);
     function blsApkRegistry() external view returns (IBLSApkRegistry);
     function delegation() external view returns (IDelegationManager);

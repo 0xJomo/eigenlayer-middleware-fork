@@ -56,11 +56,7 @@ contract StakeRegistryUnitTests is MockAVSDeployer, IStakeRegistryEvents {
         );
 
         stakeRegistryImplementation = new StakeRegistryHarness(
-            IRegistryCoordinator(address(registryCoordinator)),
-            delegationMock,
-            avsDirectoryMock,
-            allocationManager,
-            serviceManager
+            ISlashingRegistryCoordinator(address(registryCoordinator)), delegationMock, avsDirectoryMock, allocationManager
         );
 
         stakeRegistry = StakeRegistryHarness(
@@ -589,7 +585,7 @@ contract StakeRegistryUnitTests_Config is StakeRegistryUnitTests {
         uint96 minimumStake,
         IStakeRegistry.StrategyParams[] memory strategyParams
     ) public {
-        cheats.expectRevert(IStakeRegistryErrors.OnlyRegistryCoordinator.selector);
+        cheats.expectRevert(IStakeRegistryErrors.OnlySlashingRegistryCoordinator.selector);
         stakeRegistry.initializeDelegatedStakeQuorum(quorumNumber, minimumStake, strategyParams);
     }
 
@@ -732,7 +728,7 @@ contract StakeRegistryUnitTests_Config is StakeRegistryUnitTests {
         uint8 quorumNumber,
         uint96 minimumStakeForQuorum
     ) public fuzzOnlyInitializedQuorums(quorumNumber) {
-        cheats.expectRevert(IStakeRegistryErrors.OnlyRegistryCoordinatorOwner.selector);
+        cheats.expectRevert(IStakeRegistryErrors.OnlySlashingRegistryCoordinatorOwner.selector);
         stakeRegistry.setMinimumStakeForQuorum(quorumNumber, minimumStakeForQuorum);
     }
 
@@ -770,7 +766,7 @@ contract StakeRegistryUnitTests_Config is StakeRegistryUnitTests {
         uint8 quorumNumber,
         IStakeRegistry.StrategyParams[] memory strategyParams
     ) public fuzzOnlyInitializedQuorums(quorumNumber) {
-        cheats.expectRevert(IStakeRegistryErrors.OnlyRegistryCoordinatorOwner.selector);
+        cheats.expectRevert(IStakeRegistryErrors.OnlySlashingRegistryCoordinatorOwner.selector);
         stakeRegistry.addStrategies(quorumNumber, strategyParams);
     }
 
@@ -869,7 +865,7 @@ contract StakeRegistryUnitTests_Config is StakeRegistryUnitTests {
         uint8 quorumNumber,
         uint256[] memory indicesToRemove
     ) public fuzzOnlyInitializedQuorums(quorumNumber) {
-        cheats.expectRevert(IStakeRegistryErrors.OnlyRegistryCoordinatorOwner.selector);
+        cheats.expectRevert(IStakeRegistryErrors.OnlySlashingRegistryCoordinatorOwner.selector);
         stakeRegistry.removeStrategies(quorumNumber, indicesToRemove);
     }
 
@@ -970,7 +966,7 @@ contract StakeRegistryUnitTests_Config is StakeRegistryUnitTests {
         uint256[] calldata strategyIndices,
         uint96[] calldata newMultipliers
     ) public fuzzOnlyInitializedQuorums(quorumNumber) {
-        cheats.expectRevert(IStakeRegistryErrors.OnlyRegistryCoordinatorOwner.selector);
+        cheats.expectRevert(IStakeRegistryErrors.OnlySlashingRegistryCoordinatorOwner.selector);
         stakeRegistry.modifyStrategyParams(quorumNumber, strategyIndices, newMultipliers);
     }
 
@@ -1062,7 +1058,7 @@ contract StakeRegistryUnitTests_Register is StakeRegistryUnitTests {
     function test_registerOperator_Revert_WhenNotRegistryCoordinator() public {
         (address operator, bytes32 operatorId) = _selectNewOperator();
 
-        cheats.expectRevert(IStakeRegistryErrors.OnlyRegistryCoordinator.selector);
+        cheats.expectRevert(IStakeRegistryErrors.OnlySlashingRegistryCoordinator.selector);
         stakeRegistry.registerOperator(operator, operatorId, initializedQuorumBytes);
     }
 
@@ -1413,7 +1409,7 @@ contract StakeRegistryUnitTests_Deregister is StakeRegistryUnitTests {
             fuzzy_addtlStake: 0
         });
 
-        cheats.expectRevert(IStakeRegistryErrors.OnlyRegistryCoordinator.selector);
+        cheats.expectRevert(IStakeRegistryErrors.OnlySlashingRegistryCoordinator.selector);
         stakeRegistry.deregisterOperator(setup.operatorId, setup.quorumsToRemove);
     }
 
@@ -1777,7 +1773,7 @@ contract StakeRegistryUnitTests_StakeUpdates is StakeRegistryUnitTests {
         UpdateSetup memory setup =
             _fuzz_setupUpdateOperatorStake({registeredFor: initializedQuorumBitmap, fuzzy_Delta: 0});
 
-        cheats.expectRevert(IStakeRegistryErrors.OnlyRegistryCoordinator.selector);
+        cheats.expectRevert(IStakeRegistryErrors.OnlySlashingRegistryCoordinator.selector);
         stakeRegistry.updateOperatorStake(setup.operator, setup.operatorId, setup.quorumNumbers);
     }
 

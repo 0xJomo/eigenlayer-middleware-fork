@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {IndexRegistryStorage} from "./IndexRegistryStorage.sol";
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 
 /**
  * @title A `Registry` that keeps track of an ordered list of operators for each quorum
@@ -17,8 +17,8 @@ contract IndexRegistry is IndexRegistryStorage {
 
     /// @notice sets the (immutable) `registryCoordinator` address
     constructor(
-        IRegistryCoordinator _registryCoordinator
-    ) IndexRegistryStorage(_registryCoordinator) {}
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator
+    ) IndexRegistryStorage(_slashingRegistryCoordinator) {}
 
     /**
      *

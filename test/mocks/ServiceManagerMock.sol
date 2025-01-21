@@ -7,7 +7,7 @@ contract ServiceManagerMock is ServiceManagerBase {
     constructor(
         IAVSDirectory _avsDirectory,
         IRewardsCoordinator _rewardsCoordinator,
-        IRegistryCoordinator _registryCoordinator,
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator,
         IStakeRegistry _stakeRegistry,
         IPermissionController _permissionController,
         IAllocationManager _allocationManager
@@ -15,7 +15,7 @@ contract ServiceManagerMock is ServiceManagerBase {
         ServiceManagerBase(
             _avsDirectory,
             _rewardsCoordinator,
-            _registryCoordinator,
+            _slashingRegistryCoordinator,
             _stakeRegistry,
             _permissionController,
             _allocationManager

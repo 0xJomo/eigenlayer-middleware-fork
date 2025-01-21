@@ -14,9 +14,9 @@ enum StakeType {
 
 interface IStakeRegistryErrors {
     /// @dev Thrown when the caller is not the registry coordinator
-    error OnlyRegistryCoordinator();
+    error OnlySlashingRegistryCoordinator();
     /// @dev Thrown when the caller is not the owner of the registry coordinator
-    error OnlyRegistryCoordinatorOwner();
+    error OnlySlashingRegistryCoordinatorOwner();
     /// @dev Thrown when the stake is below the minimum required for a quorum
     error BelowMinimumStakeRequirement();
     /// @dev Thrown when a quorum being created already exists.

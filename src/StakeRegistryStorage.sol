@@ -4,16 +4,11 @@ pragma solidity ^0.8.27;
 import {IDelegationManager} from
     "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
-import {IAllocationManager} from
-    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
-import {IServiceManager} from "./interfaces/IServiceManager.sol";
-import {
-    IStrategyManager,
-    IStrategy
-} from "eigenlayer-contracts/src/contracts/interfaces/IStrategyManager.sol";
+import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IStrategyManager, IStrategy} from "eigenlayer-contracts/src/contracts/interfaces/IStrategyManager.sol";
 
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
-import {IStakeRegistry, StakeType} from "./interfaces/IStakeRegistry.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
+import {IStakeRegistry, StakeType} from  "./interfaces/IStakeRegistry.sol";
 
 /**
  * @title Storage variables for the `StakeRegistry` contract.
@@ -36,9 +31,6 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
 
     /// @notice the address of the AllocationManager for EigenLayer.
     IAllocationManager public immutable allocationManager;
-
-    /// @notice the address of the ServiceManager associtated with the stake registries
-    IServiceManager public immutable serviceManager;
 
     /// @notice the coordinator contract that this registry is associated with
     address public immutable registryCoordinator;
@@ -69,16 +61,14 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
     mapping(uint8 quorumNumber => uint32) public slashableStakeLookAheadPerQuorum;
 
     constructor(
-        IRegistryCoordinator _registryCoordinator,
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator,
         IDelegationManager _delegationManager,
         IAVSDirectory _avsDirectory,
-        IAllocationManager _allocationManager,
-        IServiceManager _serviceManager
+        IAllocationManager _allocationManager
     ) {
-        registryCoordinator = address(_registryCoordinator);
+        registryCoordinator = address(_slashingRegistryCoordinator);
         delegation = _delegationManager;
         avsDirectory = _avsDirectory;
-        serviceManager = _serviceManager;
         allocationManager = _allocationManager;
     }
 
