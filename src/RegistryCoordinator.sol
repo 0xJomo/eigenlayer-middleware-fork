@@ -2,29 +2,14 @@
 pragma solidity ^0.8.27;
 
 import {IPauserRegistry} from "eigenlayer-contracts/src/contracts/interfaces/IPauserRegistry.sol";
-import {ISignatureUtils} from "eigenlayer-contracts/src/contracts/interfaces/ISignatureUtils.sol";
-import {IStrategy } from "eigenlayer-contracts/src/contracts/interfaces/IStrategy.sol";
-import {IAllocationManager, OperatorSet, IAllocationManagerTypes} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
-import {ISocketUpdater} from "./interfaces/ISocketUpdater.sol";
+import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
 import {IBLSApkRegistry} from "./interfaces/IBLSApkRegistry.sol";
-import {IStakeRegistry, StakeType} from "./interfaces/IStakeRegistry.sol";
+import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
 
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
-import {BN254} from "./libraries/BN254.sol";
-import {SignatureCheckerLib} from "./libraries/SignatureCheckerLib.sol";
-import {QuorumBitmapHistoryLib} from "./libraries/QuorumBitmapHistoryLib.sol";
-import {AVSRegistrar} from "./AVSRegistrar.sol";
-
-import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
-import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
-import {EIP712} from "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
-
-import {Pausable} from "eigenlayer-contracts/src/contracts/permissions/Pausable.sol";
-import {IAVSRegistrar} from "eigenlayer-contracts/src/contracts/interfaces/IAVSRegistrar.sol";
-
 import {SlashingRegistryCoordinator} from "./SlashingRegistryCoordinator.sol";
 
 /**
@@ -37,7 +22,9 @@ import {SlashingRegistryCoordinator} from "./SlashingRegistryCoordinator.sol";
  */
 contract RegistryCoordinator is SlashingRegistryCoordinator, IRegistryCoordinator {
     using BitmapUtils for *;
-    using BN254 for BN254.G1Point;
+
+    /// @notice the ServiceManager for this AVS, which forwards calls onto EigenLayer's core contracts
+    IServiceManager public immutable serviceManager;
 
     constructor(
         IServiceManager _serviceManager,
@@ -48,14 +35,15 @@ contract RegistryCoordinator is SlashingRegistryCoordinator, IRegistryCoordinato
         IPauserRegistry _pauserRegistry
     )
         SlashingRegistryCoordinator(
-            _serviceManager,
             _stakeRegistry,
             _blsApkRegistry,
             _indexRegistry,
             _allocationManager,
             _pauserRegistry
         )
-    {}
+    {
+        serviceManager = _serviceManager;
+    }
 
     /**
      *
@@ -191,5 +179,85 @@ contract RegistryCoordinator is SlashingRegistryCoordinator, IRegistryCoordinato
 
         // Enable operator sets mode
         isOperatorSetAVS = true;
+    }
+
+    /**
+     *
+     *                         INTERNAL FUNCTIONS
+     *
+     */
+
+    /**
+     * @notice Register the operator for one or more quorums. This method updates the
+     * operator's quorum bitmap, socket, and status, then registers them with each registry.
+     */
+    function _registerOperator(
+        address operator,
+        bytes32 operatorId,
+        bytes memory quorumNumbers,
+        string memory socket,
+        SignatureWithSaltAndExpiry memory operatorSignature
+    ) internal virtual returns (RegisterResults memory results) {
+        /**
+         * Get bitmap of quorums to register for and operator's current bitmap. Validate that:
+         * - we're trying to register for at least 1 quorum
+         * - the quorums we're registering for exist (checked against `quorumCount` in orderedBytesArrayToBitmap)
+         * - the operator is not currently registered for any quorums we're registering for
+         * Then, calculate the operator's new bitmap after registration
+         */
+        uint192 quorumsToAdd =
+            uint192(BitmapUtils.orderedBytesArrayToBitmap(quorumNumbers, quorumCount));
+        uint192 currentBitmap = _currentOperatorBitmap(operatorId);
+        require(
+            !quorumsToAdd.isEmpty(), BitmapEmpty()
+        );
+        require(
+            quorumsToAdd.noBitsInCommon(currentBitmap),
+            AlreadyRegisteredForQuorums()
+        );
+        uint192 newBitmap = uint192(currentBitmap.plus(quorumsToAdd));
+
+        // Check that the operator can reregister if ejected
+        require(
+            lastEjectionTimestamp[operator] + ejectionCooldown < block.timestamp,
+            CannotReregisterYet()
+        );
+
+        /**
+         * Update operator's bitmap, socket, and status. Only update operatorInfo if needed:
+         * if we're `REGISTERED`, the operatorId and status are already correct.
+         */
+        _updateOperatorBitmap({operatorId: operatorId, newBitmap: newBitmap});
+
+        emit OperatorSocketUpdate(operatorId, socket);
+
+        // If the operator wasn't registered for any quorums, update their status
+        // and register them with this AVS in EigenLayer core (DelegationManager)
+        if (_operatorInfo[operator].status != OperatorStatus.REGISTERED) {
+            _operatorInfo[operator] =
+                OperatorInfo({operatorId: operatorId, status: OperatorStatus.REGISTERED});
+
+            serviceManager.registerOperatorToAVS(operator, operatorSignature);
+            emit OperatorRegistered(operator, operatorId);
+        }
+
+        // Register the operator with the BLSApkRegistry, StakeRegistry, and IndexRegistry
+        blsApkRegistry.registerOperator(operator, quorumNumbers);
+        (results.operatorStakes, results.totalStakes) =
+            stakeRegistry.registerOperator(operator, operatorId, quorumNumbers);
+        results.numOperatorsPerQuorum = indexRegistry.registerOperator(operatorId, quorumNumbers);
+
+        return results;
+    }
+
+    /// @dev Hook to allow for any post-deregister logic
+    function _afterDeregisterOperator(address operator, bytes32 operatorId, bytes memory quorumNumbers, uint192 newBitmap) internal virtual override {
+        // If the operator is no longer registered for any quorums, update their status and deregister
+        // them from the AVS via the EigenLayer core contracts
+        if (newBitmap.isEmpty()) {
+            _operatorInfo[operator].status = OperatorStatus.DEREGISTERED;
+            serviceManager.deregisterOperatorFromAVS(operator);
+            emit OperatorDeregistered(operator, operatorId);
+        }
     }
 }

@@ -9,7 +9,6 @@ import {ISocketUpdater} from "./interfaces/ISocketUpdater.sol";
 import {IBLSApkRegistry} from "./interfaces/IBLSApkRegistry.sol";
 import {IStakeRegistry, StakeType} from "./interfaces/IStakeRegistry.sol";
 import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
-import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
@@ -47,6 +46,11 @@ contract SlashingRegistryCoordinator is
     using BitmapUtils for *;
     using BN254 for BN254.G1Point;
 
+    modifier onlyAllocationManager() {
+        _checkAllocationManager();
+        _;
+    }
+
     modifier onlyEjector() {
         _checkEjector();
         _;
@@ -60,7 +64,6 @@ contract SlashingRegistryCoordinator is
     }
 
     constructor(
-        IServiceManager _serviceManager,
         IStakeRegistry _stakeRegistry,
         IBLSApkRegistry _blsApkRegistry,
         IIndexRegistry _indexRegistry,
@@ -68,7 +71,6 @@ contract SlashingRegistryCoordinator is
         IPauserRegistry _pauserRegistry
     )
         SlashingRegistryCoordinatorStorage(
-            _serviceManager,
             _stakeRegistry,
             _blsApkRegistry,
             _indexRegistry,
@@ -91,26 +93,17 @@ contract SlashingRegistryCoordinator is
         address _churnApprover,
         address _ejector,
         uint256 _initialPausedStatus,
-        OperatorSetParam[] memory _operatorSetParams,
-        uint96[] memory _minimumStakes,
-        IStakeRegistry.StrategyParams[][] memory _strategyParams,
-        StakeType[] memory _stakeTypes,
-        uint32[] memory _lookAheadPeriods
+        address _accountIdentifier
     ) external initializer {
         _transferOwnership(_initialOwner);
         _setChurnApprover(_churnApprover);
         _setPausedStatus(_initialPausedStatus);
         _setEjector(_ejector);
-
+        _setAccountIdentifier(_accountIdentifier);
         // Add registry contracts to the registries array
         registries.push(address(stakeRegistry));
         registries.push(address(blsApkRegistry));
         registries.push(address(indexRegistry));
-
-        // Create quorums
-        for (uint256 i = 0; i < _operatorSetParams.length; i++) {
-            _createQuorum(_operatorSetParams[i], _minimumStakes[i], _strategyParams[i], _stakeTypes[i], _lookAheadPeriods[i]);
-        }
 
         // Set the AVS to be OperatorSets compatible
         isOperatorSetAVS = true;
@@ -149,12 +142,11 @@ contract SlashingRegistryCoordinator is
         address operator,
         uint32[] memory operatorSetIds,
         bytes calldata data
-    ) external override onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR) {
+    ) external override onlyAllocationManager onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR) {
         require(isOperatorSetAVS, OperatorSetsNotEnabled());
         for (uint256 i = 0; i < operatorSetIds.length; i++) {
             require(!isM2Quorum[uint8(operatorSetIds[i])], OperatorSetsNotSupported());
         }
-        _checkAllocationManager();
         bytes memory quorumNumbers = new bytes(operatorSetIds.length);
         for (uint256 i = 0; i < operatorSetIds.length; i++) {
             quorumNumbers[i] = bytes1(uint8(operatorSetIds[i]));
@@ -194,12 +186,11 @@ contract SlashingRegistryCoordinator is
     function deregisterOperator(
         address operator,
         uint32[] memory operatorSetIds
-    ) external override onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR) {
+    ) external override onlyAllocationManager onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR) {
         require(isOperatorSetAVS, OperatorSetsNotEnabled());
         for (uint256 i = 0; i < operatorSetIds.length; i++) {
             require(!isM2Quorum[uint8(operatorSetIds[i])], OperatorSetsNotSupported());
         }
-        _checkAllocationManager();
         bytes memory quorumNumbers = new bytes(operatorSetIds.length);
         for (uint256 i = 0; i < operatorSetIds.length; i++) {
             quorumNumbers[i] = bytes1(uint8(operatorSetIds[i]));
@@ -385,6 +376,15 @@ contract SlashingRegistryCoordinator is
     }
 
     /**
+     * @notice Sets the account identifier for this AVS (used for UAM integration in EigenLayer)
+     * @param _accountIdentifier the new account identifier
+     * @dev only callable by the owner
+     */
+    function setAccountIdentifier(address _accountIdentifier) external onlyOwner {
+        _setAccountIdentifier(_accountIdentifier);
+    }
+
+    /**
      * @notice Sets the ejection cooldown, which is the time an operator must wait in
      * seconds afer ejection before registering for any quorum
      * @param _ejectionCooldown the new ejection cooldown in seconds
@@ -399,70 +399,6 @@ contract SlashingRegistryCoordinator is
      *                         INTERNAL FUNCTIONS
      *
      */
-
-    /**
-     * @notice Register the operator for one or more quorums. This method updates the
-     * operator's quorum bitmap, socket, and status, then registers them with each registry.
-     */
-    function _registerOperator(
-        address operator,
-        bytes32 operatorId,
-        bytes memory quorumNumbers,
-        string memory socket,
-        SignatureWithSaltAndExpiry memory operatorSignature
-    ) internal virtual returns (RegisterResults memory results) {
-        /**
-         * Get bitmap of quorums to register for and operator's current bitmap. Validate that:
-         * - we're trying to register for at least 1 quorum
-         * - the quorums we're registering for exist (checked against `quorumCount` in orderedBytesArrayToBitmap)
-         * - the operator is not currently registered for any quorums we're registering for
-         * Then, calculate the operator's new bitmap after registration
-         */
-        uint192 quorumsToAdd =
-            uint192(BitmapUtils.orderedBytesArrayToBitmap(quorumNumbers, quorumCount));
-        uint192 currentBitmap = _currentOperatorBitmap(operatorId);
-        require(
-            !quorumsToAdd.isEmpty(), BitmapEmpty()
-        );
-        require(
-            quorumsToAdd.noBitsInCommon(currentBitmap),
-            AlreadyRegisteredForQuorums()
-        );
-        uint192 newBitmap = uint192(currentBitmap.plus(quorumsToAdd));
-
-        // Check that the operator can reregister if ejected
-        require(
-            lastEjectionTimestamp[operator] + ejectionCooldown < block.timestamp,
-            CannotReregisterYet()
-        );
-
-        /**
-         * Update operator's bitmap, socket, and status. Only update operatorInfo if needed:
-         * if we're `REGISTERED`, the operatorId and status are already correct.
-         */
-        _updateOperatorBitmap({operatorId: operatorId, newBitmap: newBitmap});
-
-        emit OperatorSocketUpdate(operatorId, socket);
-
-        // If the operator wasn't registered for any quorums, update their status
-        // and register them with this AVS in EigenLayer core (DelegationManager)
-        if (_operatorInfo[operator].status != OperatorStatus.REGISTERED) {
-            _operatorInfo[operator] =
-                OperatorInfo({operatorId: operatorId, status: OperatorStatus.REGISTERED});
-
-            serviceManager.registerOperatorToAVS(operator, operatorSignature);
-            emit OperatorRegistered(operator, operatorId);
-
-        }
-
-        // Register the operator with the BLSApkRegistry, StakeRegistry, and IndexRegistry
-        blsApkRegistry.registerOperator(operator, quorumNumbers);
-        (results.operatorStakes, results.totalStakes) =
-            stakeRegistry.registerOperator(operator, operatorId, quorumNumbers);
-        results.numOperatorsPerQuorum = indexRegistry.registerOperator(operatorId, quorumNumbers);
-
-        return results;
-    }
 
     /**
      * @notice Register the operator for one or more quorums. This method updates the
@@ -484,6 +420,10 @@ contract SlashingRegistryCoordinator is
         uint192 quorumsToAdd =
             uint192(BitmapUtils.orderedBytesArrayToBitmap(quorumNumbers, quorumCount));
         uint192 currentBitmap = _currentOperatorBitmap(operatorId);
+
+        // call hook to allow for any pre-register logic
+        _beforeRegisterOperator(operator, operatorId, quorumNumbers, currentBitmap);
+
         require(
             !quorumsToAdd.isEmpty(), BitmapEmpty()
         );
@@ -518,6 +458,9 @@ contract SlashingRegistryCoordinator is
         (results.operatorStakes, results.totalStakes) =
             stakeRegistry.registerOperator(operator, operatorId, quorumNumbers);
         results.numOperatorsPerQuorum = indexRegistry.registerOperator(operatorId, quorumNumbers);
+
+        // call hook to allow for any post-register logic
+        _afterRegisterOperator(operator, operatorId, quorumNumbers, newBitmap);
 
         return results;
     }
@@ -577,6 +520,56 @@ contract SlashingRegistryCoordinator is
                 _deregisterOperator(operatorKickParams[i].operator, singleQuorumNumber);
             }
         }
+    }
+
+    /**
+     * @dev Deregister the operator from one or more quorums
+     * This method updates the operator's quorum bitmap and status, then deregisters
+     * the operator with the BLSApkRegistry, IndexRegistry, and StakeRegistry
+     */
+    function _deregisterOperator(address operator, bytes memory quorumNumbers) internal virtual {
+        // Fetch the operator's info and ensure they are registered
+        OperatorInfo storage operatorInfo = _operatorInfo[operator];
+        bytes32 operatorId = operatorInfo.operatorId;
+        uint192 currentBitmap = _currentOperatorBitmap(operatorId);
+
+        // call hook to allow for any pre-deregister logic
+        _beforeDeregisterOperator(operator, operatorId, quorumNumbers, currentBitmap);
+
+        require(
+            operatorInfo.status == OperatorStatus.REGISTERED,
+            NotRegistered()
+        );
+
+        /**
+         * Get bitmap of quorums to deregister from and operator's current bitmap. Validate that:
+         * - we're trying to deregister from at least 1 quorum
+         * - the quorums we're deregistering from exist (checked against `quorumCount` in orderedBytesArrayToBitmap)
+         * - the operator is currently registered for any quorums we're trying to deregister from
+         * Then, calculate the operator's new bitmap after deregistration
+         */
+        uint192 quorumsToRemove =
+            uint192(BitmapUtils.orderedBytesArrayToBitmap(quorumNumbers, quorumCount));
+        require(
+            !quorumsToRemove.isEmpty(),
+            BitmapCannotBeZero()
+        );
+        require(
+            quorumsToRemove.isSubsetOf(currentBitmap),
+            NotRegisteredForQuorum()
+        );
+        uint192 newBitmap = uint192(currentBitmap.minus(quorumsToRemove));
+
+        // Update operator's bitmap and status
+        _updateOperatorBitmap({operatorId: operatorId, newBitmap: newBitmap});
+
+        // Deregister operator with each of the registry contracts
+        blsApkRegistry.deregisterOperator(operator, quorumNumbers);
+        stakeRegistry.deregisterOperator(operatorId, quorumNumbers);
+        indexRegistry.deregisterOperator(operatorId, quorumNumbers);
+
+        // call hook to allow for any post-deregister logic
+        _afterDeregisterOperator(operator, operatorId, quorumNumbers, newBitmap);
     }
 
     /**
@@ -671,57 +664,6 @@ contract SlashingRegistryCoordinator is
             operatorToKickStake < _totalKickThreshold(totalQuorumStake, setParams),
             CannotKickOperatorAboveThreshold()
         );
-    }
-
-    /**
-     * @dev Deregister the operator from one or more quorums
-     * This method updates the operator's quorum bitmap and status, then deregisters
-     * the operator with the BLSApkRegistry, IndexRegistry, and StakeRegistry
-     */
-    function _deregisterOperator(address operator, bytes memory quorumNumbers) internal virtual {
-        // Fetch the operator's info and ensure they are registered
-        OperatorInfo storage operatorInfo = _operatorInfo[operator];
-        bytes32 operatorId = operatorInfo.operatorId;
-        require(
-            operatorInfo.status == OperatorStatus.REGISTERED,
-            NotRegistered()
-        );
-
-        /**
-         * Get bitmap of quorums to deregister from and operator's current bitmap. Validate that:
-         * - we're trying to deregister from at least 1 quorum
-         * - the quorums we're deregistering from exist (checked against `quorumCount` in orderedBytesArrayToBitmap)
-         * - the operator is currently registered for any quorums we're trying to deregister from
-         * Then, calculate the operator's new bitmap after deregistration
-         */
-        uint192 quorumsToRemove =
-            uint192(BitmapUtils.orderedBytesArrayToBitmap(quorumNumbers, quorumCount));
-        uint192 currentBitmap = _currentOperatorBitmap(operatorId);
-        require(
-            !quorumsToRemove.isEmpty(),
-            BitmapCannotBeZero()
-        );
-        require(
-            quorumsToRemove.isSubsetOf(currentBitmap),
-            NotRegisteredForQuorum()
-        );
-        uint192 newBitmap = uint192(currentBitmap.minus(quorumsToRemove));
-
-        // Update operator's bitmap and status
-        _updateOperatorBitmap({operatorId: operatorId, newBitmap: newBitmap});
-
-        // If the operator is no longer registered for any quorums, update their status and deregister
-        // them from the AVS via the EigenLayer core contracts
-        if (newBitmap.isEmpty()) {
-            operatorInfo.status = OperatorStatus.DEREGISTERED;
-            serviceManager.deregisterOperatorFromAVS(operator);
-            emit OperatorDeregistered(operator, operatorId);
-        }
-
-        // Deregister operator with each of the registry contracts
-        blsApkRegistry.deregisterOperator(operator, quorumNumbers);
-        stakeRegistry.deregisterOperator(operatorId, quorumNumbers);
-        indexRegistry.deregisterOperator(operatorId, quorumNumbers);
     }
 
     /**
@@ -852,7 +794,7 @@ contract SlashingRegistryCoordinator is
                 strategies: strategies
             });
             allocationManager.createOperatorSets({
-                avs: address(serviceManager),
+                avs: accountIdentifier,
                 params: createSetParams
             });
         }
@@ -910,6 +852,22 @@ contract SlashingRegistryCoordinator is
         emit EjectorUpdated(ejector, newEjector);
         ejector = newEjector;
     }
+
+    function _setAccountIdentifier(address _accountIdentifier) internal {
+        accountIdentifier = _accountIdentifier;
+    }
+
+    /// @dev Hook to allow for any pre-register logic in `_registerOperator`
+    function _beforeRegisterOperator(address operator, bytes32 operatorId, bytes memory quorumNumbers, uint192 currentBitmap) internal virtual {}
+
+    /// @dev Hook to allow for any post-register logic in `_registerOperator`
+    function _afterRegisterOperator(address operator, bytes32 operatorId, bytes memory quorumNumbers, uint192 newBitmap) internal virtual {}
+
+    /// @dev Hook to allow for any pre-deregister logic in `_deregisterOperator`
+    function _beforeDeregisterOperator(address operator, bytes32 operatorId, bytes memory quorumNumbers, uint192 currentBitmap) internal virtual {}
+
+    /// @dev Hook to allow for any post-deregister logic in `_deregisterOperator`
+    function _afterDeregisterOperator(address operator, bytes32 operatorId, bytes memory quorumNumbers, uint192 newBitmap) internal virtual {}
 
     /**
      *

@@ -27,13 +27,13 @@ contract StakeRegistry is StakeRegistryStorage {
 
     using BitmapUtils for *;
 
-    modifier onlyRegistryCoordinator() {
-        _checkRegistryCoordinator();
+    modifier onlySlashingRegistryCoordinator() {
+        _checkSlashingRegistryCoordinator();
         _;
     }
 
     modifier onlyCoordinatorOwner() {
-        _checkRegistryCoordinatorOwner();
+        _checkSlashingRegistryCoordinatorOwner();
         _;
     }
 
@@ -43,12 +43,18 @@ contract StakeRegistry is StakeRegistryStorage {
     }
 
     constructor(
-        ISlashingRegistryCoordinator _registryCoordinator,
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator,
         IDelegationManager _delegationManager,
         IAVSDirectory _avsDirectory,
         IAllocationManager _allocationManager,
         IServiceManager _serviceManager
-    ) StakeRegistryStorage(_registryCoordinator, _delegationManager, _avsDirectory, _allocationManager, _serviceManager) {}
+    ) StakeRegistryStorage(
+        _slashingRegistryCoordinator,
+        _delegationManager,
+        _avsDirectory,
+        _allocationManager,
+        _serviceManager
+    ) {}
 
     /*******************************************************************************
                       EXTERNAL FUNCTIONS - REGISTRY COORDINATOR
@@ -71,7 +77,7 @@ contract StakeRegistry is StakeRegistryStorage {
         address operator,
         bytes32 operatorId,
         bytes calldata quorumNumbers
-    ) public virtual onlyRegistryCoordinator returns (uint96[] memory, uint96[] memory) {
+    ) public virtual onlySlashingRegistryCoordinator returns (uint96[] memory, uint96[] memory) {
 
         uint96[] memory currentStakes = new uint96[](quorumNumbers.length);
         uint96[] memory totalStakes = new uint96[](quorumNumbers.length);
@@ -115,7 +121,7 @@ contract StakeRegistry is StakeRegistryStorage {
     function deregisterOperator(
         bytes32 operatorId,
         bytes calldata quorumNumbers
-    ) public virtual onlyRegistryCoordinator {
+    ) public virtual onlySlashingRegistryCoordinator {
         /**
          * For each quorum, remove the operator's stake for the quorum and update
          * the quorum's total stake to account for the removal
@@ -149,7 +155,7 @@ contract StakeRegistry is StakeRegistryStorage {
         address operator,
         bytes32 operatorId,
         bytes calldata quorumNumbers
-    ) external onlyRegistryCoordinator returns (uint192) {
+    ) external onlySlashingRegistryCoordinator returns (uint192) {
         uint192 quorumsToRemove;
 
         /**
@@ -194,7 +200,7 @@ contract StakeRegistry is StakeRegistryStorage {
         uint8 quorumNumber,
         uint96 minimumStake,
         StrategyParams[] memory _strategyParams
-    ) public virtual onlyRegistryCoordinator {
+    ) public virtual onlySlashingRegistryCoordinator {
         require(!_quorumExists(quorumNumber), QuorumAlreadyExists());
         _addStrategyParams(quorumNumber, _strategyParams);
         _setMinimumStakeForQuorum(quorumNumber, minimumStake);
@@ -214,7 +220,7 @@ contract StakeRegistry is StakeRegistryStorage {
         uint96 minimumStake,
         uint32 lookAheadPeriod,
         StrategyParams[] memory _strategyParams
-    ) public virtual onlyRegistryCoordinator {
+    ) public virtual onlySlashingRegistryCoordinator {
         require(!_quorumExists(quorumNumber), QuorumAlreadyExists());
         _addStrategyParams(quorumNumber, _strategyParams);
         _setMinimumStakeForQuorum(quorumNumber, minimumStake);
@@ -267,7 +273,7 @@ contract StakeRegistry is StakeRegistryStorage {
                 strategiesToAdd[i] = _strategyParams[i].strategy;
             }
             allocationManager.addStrategiesToOperatorSet({
-                avs: address(serviceManager),
+                avs: ISlashingRegistryCoordinator(registryCoordinator).accountIdentifier(),
                 operatorSetId: quorumNumber,
                 strategies: strategiesToAdd
             });
@@ -306,7 +312,7 @@ contract StakeRegistry is StakeRegistryStorage {
 
         if (isOperatorSetQuorum(quorumNumber)){
             allocationManager.removeStrategiesFromOperatorSet({
-                avs: address(serviceManager),
+                avs: ISlashingRegistryCoordinator(registryCoordinator).accountIdentifier(),
                 operatorSetId: quorumNumber,
                 strategies: _strategiesToRemove
             });
@@ -525,7 +531,7 @@ contract StakeRegistry is StakeRegistryStorage {
         uint32 beforeTimestamp = uint32(block.number + slashableStakeLookAheadPerQuorum[quorumNumber]);
 
         uint256[][] memory slashableShares = allocationManager.getMinimumSlashableStake(
-            OperatorSet(address(serviceManager), quorumNumber),
+            OperatorSet(ISlashingRegistryCoordinator(registryCoordinator).accountIdentifier(), quorumNumber),
             operators,
             strategiesPerQuorum[quorumNumber],
             beforeTimestamp
@@ -831,12 +837,12 @@ contract StakeRegistry is StakeRegistryStorage {
     }
 
 
-    function _checkRegistryCoordinator() internal view {
-        require(msg.sender == address(registryCoordinator), OnlyRegistryCoordinator());
+    function _checkSlashingRegistryCoordinator() internal view {
+        require(msg.sender == registryCoordinator, OnlySlashingRegistryCoordinator());
     }
 
-    function _checkRegistryCoordinatorOwner() internal view {
-        require(msg.sender == ISlashingRegistryCoordinator(registryCoordinator).owner(), OnlyRegistryCoordinatorOwner());
+    function _checkSlashingRegistryCoordinatorOwner() internal view {
+        require(msg.sender == ISlashingRegistryCoordinator(registryCoordinator).owner(), OnlySlashingRegistryCoordinatorOwner());
     }
 
     function _checkQuorumExists(uint8 quorumNumber) internal view {

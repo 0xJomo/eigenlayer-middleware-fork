@@ -65,13 +65,13 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
     mapping(uint8 quorumNumber => uint32) public slashableStakeLookAheadPerQuorum;
 
     constructor(
-        ISlashingRegistryCoordinator _registryCoordinator,
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator,
         IDelegationManager _delegationManager,
         IAVSDirectory _avsDirectory,
         IAllocationManager _allocationManager,
         IServiceManager _serviceManager
     ) {
-        registryCoordinator = address(_registryCoordinator);
+        registryCoordinator = address(_slashingRegistryCoordinator);
         delegation = _delegationManager;
         avsDirectory = _avsDirectory;
         serviceManager = _serviceManager;

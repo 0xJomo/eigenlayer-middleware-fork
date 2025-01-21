@@ -39,12 +39,6 @@ interface IRegistryCoordinatorErrors {
 interface ISlashingRegistryCoordinator is IRegistryCoordinatorErrors{
     // EVENTS
 
-    /// Emits when an operator is registered
-    event OperatorRegistered(address indexed operator, bytes32 indexed operatorId);
-
-    /// Emits when an operator is deregistered
-    event OperatorDeregistered(address indexed operator, bytes32 indexed operatorId);
-
     event OperatorSetParamsUpdated(uint8 indexed quorumNumber, OperatorSetParam operatorSetParams);
 
     event ChurnApproverUpdated(address prevChurnApprover, address newChurnApprover);
@@ -202,5 +196,10 @@ interface ISlashingRegistryCoordinator is IRegistryCoordinatorErrors{
     /// @notice The owner of the registry coordinator
     function owner() external view returns (address);
 
-    function serviceManager() external view returns (IServiceManager);
+    /**
+     * @notice The account identifier for this AVS (used for UAM integration in EigenLayer)
+     * @dev NOTE: Updating this value will break existing OperatorSets and UAM integration.
+     * This value should only be set once.
+     */
+    function accountIdentifier() external view returns (address);
 }
