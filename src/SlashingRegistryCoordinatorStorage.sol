@@ -7,9 +7,9 @@ import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
 import {IAllocationManager, OperatorSet, IAllocationManagerTypes} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 
-abstract contract RegistryCoordinatorStorage is IRegistryCoordinator {
+abstract contract SlashingRegistryCoordinatorStorage is ISlashingRegistryCoordinator {
 
     /*******************************************************************************
                                CONSTANTS AND IMMUTABLES

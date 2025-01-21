@@ -9,7 +9,7 @@ import {IServiceManager} from "./interfaces/IServiceManager.sol";
 
 import {StakeRegistryStorage, IStrategy} from "./StakeRegistryStorage.sol";
 
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry, StakeType} from "./interfaces/IStakeRegistry.sol";
 
 import {BitmapUtils} from "./libraries/BitmapUtils.sol";
@@ -43,7 +43,7 @@ contract StakeRegistry is StakeRegistryStorage {
     }
 
     constructor(
-        IRegistryCoordinator _registryCoordinator,
+        ISlashingRegistryCoordinator _registryCoordinator,
         IDelegationManager _delegationManager,
         IAVSDirectory _avsDirectory,
         IAllocationManager _allocationManager,
@@ -590,8 +590,8 @@ contract StakeRegistry is StakeRegistryStorage {
      * @return True if the quorum is an operator set quorum
      */
     function isOperatorSetQuorum(uint8 quorumNumber) public view returns (bool) {
-        bool isM2 = IRegistryCoordinator(registryCoordinator).isM2Quorum(quorumNumber);
-        bool isOperatorSet = IRegistryCoordinator(registryCoordinator).isOperatorSetAVS();
+        bool isM2 = ISlashingRegistryCoordinator(registryCoordinator).isM2Quorum(quorumNumber);
+        bool isOperatorSet = ISlashingRegistryCoordinator(registryCoordinator).isOperatorSetAVS();
         return isOperatorSet && !isM2;
     }
 
@@ -836,7 +836,7 @@ contract StakeRegistry is StakeRegistryStorage {
     }
 
     function _checkRegistryCoordinatorOwner() internal view {
-        require(msg.sender == IRegistryCoordinator(registryCoordinator).owner(), OnlyRegistryCoordinatorOwner());
+        require(msg.sender == ISlashingRegistryCoordinator(registryCoordinator).owner(), OnlyRegistryCoordinatorOwner());
     }
 
     function _checkQuorumExists(uint8 quorumNumber) internal view {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.27;
 
-import {IRegistryCoordinator} from "../interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "../interfaces/ISlashingRegistryCoordinator.sol";
 
 /// @title QuorumBitmapHistoryLib
 /// @notice This library operates on the _operatorBitmapHistory in the RegistryCoordinator
@@ -19,7 +19,7 @@ library QuorumBitmapHistoryLib {
     /// @param operatorId The ID of the operator
     /// @return index The index of the quorum bitmap update
     function getQuorumBitmapIndexAtBlockNumber(
-        mapping(bytes32 => IRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
+        mapping(bytes32 => ISlashingRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
         uint32 blockNumber,
         bytes32 operatorId
     ) internal view returns (uint32 index) {
@@ -45,7 +45,7 @@ library QuorumBitmapHistoryLib {
     /// @param operatorId The ID of the operator
     /// @return The current quorum bitmap
     function currentOperatorBitmap(
-        mapping(bytes32 => IRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
+        mapping(bytes32 => ISlashingRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
         bytes32 operatorId
     ) internal view returns (uint192) {
         uint256 historyLength = self[operatorId].length;
@@ -62,7 +62,7 @@ library QuorumBitmapHistoryLib {
     /// @param operatorIds The array of operator IDs
     /// @return An array of indices corresponding to the quorum bitmap updates
     function getQuorumBitmapIndicesAtBlockNumber(
-        mapping(bytes32 => IRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
+        mapping(bytes32 => ISlashingRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
         uint32 blockNumber,
         bytes32[] memory operatorIds
     ) internal view returns (uint32[] memory) {
@@ -80,12 +80,12 @@ library QuorumBitmapHistoryLib {
     /// @param index The index of the quorum bitmap update
     /// @return The quorum bitmap at the specified index
     function getQuorumBitmapAtBlockNumberByIndex(
-        mapping(bytes32 => IRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
+        mapping(bytes32 => ISlashingRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
         bytes32 operatorId,
         uint32 blockNumber,
         uint256 index
     ) internal view returns (uint192) {
-        IRegistryCoordinator.QuorumBitmapUpdate memory quorumBitmapUpdate = self[operatorId][index];
+        ISlashingRegistryCoordinator.QuorumBitmapUpdate memory quorumBitmapUpdate = self[operatorId][index];
 
         /**
          * Validate that the update is valid for the given blockNumber:
@@ -110,7 +110,7 @@ library QuorumBitmapHistoryLib {
     /// @param operatorId The ID of the operator
     /// @param newBitmap The new quorum bitmap to set
     function updateOperatorBitmap(
-        mapping(bytes32 => IRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
+        mapping(bytes32 => ISlashingRegistryCoordinator.QuorumBitmapUpdate[]) storage self,
         bytes32 operatorId,
         uint192 newBitmap
     ) internal {
@@ -119,7 +119,7 @@ library QuorumBitmapHistoryLib {
         if (historyLength == 0) {
             // No prior bitmap history - push our first entry
             self[operatorId].push(
-                IRegistryCoordinator.QuorumBitmapUpdate({
+                ISlashingRegistryCoordinator.QuorumBitmapUpdate({
                     updateBlockNumber: uint32(block.number),
                     nextUpdateBlockNumber: 0,
                     quorumBitmap: newBitmap
@@ -127,7 +127,7 @@ library QuorumBitmapHistoryLib {
             );
         } else {
             // We have prior history - fetch our last-recorded update
-            IRegistryCoordinator.QuorumBitmapUpdate storage lastUpdate =
+            ISlashingRegistryCoordinator.QuorumBitmapUpdate storage lastUpdate =
                 self[operatorId][historyLength - 1];
 
             /**
@@ -139,7 +139,7 @@ library QuorumBitmapHistoryLib {
             } else {
                 lastUpdate.nextUpdateBlockNumber = uint32(block.number);
                 self[operatorId].push(
-                    IRegistryCoordinator.QuorumBitmapUpdate({
+                    ISlashingRegistryCoordinator.QuorumBitmapUpdate({
                         updateBlockNumber: uint32(block.number),
                         nextUpdateBlockNumber: 0,
                         quorumBitmap: newBitmap

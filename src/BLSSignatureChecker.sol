@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {IBLSSignatureChecker} from "./interfaces/IBLSSignatureChecker.sol";
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 import {IBLSApkRegistry} from "./interfaces/IBLSApkRegistry.sol";
 import {IStakeRegistry, IDelegationManager} from "./interfaces/IStakeRegistry.sol";
 
@@ -23,7 +23,7 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
     // gas cost of multiplying 2 pairings
     uint256 internal constant PAIRING_EQUALITY_CHECK_GAS = 120_000;
 
-    IRegistryCoordinator public immutable registryCoordinator;
+    ISlashingRegistryCoordinator public immutable registryCoordinator;
     IStakeRegistry public immutable stakeRegistry;
     IBLSApkRegistry public immutable blsApkRegistry;
     IDelegationManager public immutable delegation;
@@ -35,7 +35,7 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
         _;
     }
 
-    constructor(IRegistryCoordinator _registryCoordinator) {
+    constructor(ISlashingRegistryCoordinator _registryCoordinator) {
         registryCoordinator = _registryCoordinator;
         stakeRegistry = _registryCoordinator.stakeRegistry();
         blsApkRegistry = _registryCoordinator.blsApkRegistry();

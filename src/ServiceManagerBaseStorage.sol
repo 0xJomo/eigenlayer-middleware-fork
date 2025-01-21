@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
@@ -25,7 +25,7 @@ abstract contract ServiceManagerBaseStorage is IServiceManager, OwnableUpgradeab
      */
     IAVSDirectory internal immutable _avsDirectory;
     IRewardsCoordinator internal immutable _rewardsCoordinator;
-    IRegistryCoordinator internal immutable _registryCoordinator;
+    ISlashingRegistryCoordinator internal immutable _registryCoordinator;
     IStakeRegistry internal immutable _stakeRegistry;
     IPermissionController internal immutable _permissionController;
 
@@ -54,7 +54,7 @@ abstract contract ServiceManagerBaseStorage is IServiceManager, OwnableUpgradeab
     constructor(
         IAVSDirectory __avsDirectory,
         IRewardsCoordinator __rewardsCoordinator,
-        IRegistryCoordinator __registryCoordinator,
+        ISlashingRegistryCoordinator __registryCoordinator,
         IStakeRegistry __stakeRegistry,
         IPermissionController __permissionController
     ) {

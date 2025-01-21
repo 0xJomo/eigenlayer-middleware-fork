@@ -7,7 +7,7 @@ import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
 import {IStrategyManager, IStrategy} from "eigenlayer-contracts/src/contracts/interfaces/IStrategyManager.sol";
 
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry, StakeType} from  "./interfaces/IStakeRegistry.sol";
 
 /**
@@ -65,7 +65,7 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
     mapping(uint8 quorumNumber => uint32) public slashableStakeLookAheadPerQuorum;
 
     constructor(
-        IRegistryCoordinator _registryCoordinator,
+        ISlashingRegistryCoordinator _registryCoordinator,
         IDelegationManager _delegationManager,
         IAVSDirectory _avsDirectory,
         IAllocationManager _allocationManager,

@@ -3,7 +3,7 @@ pragma solidity ^0.8.27;
 
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 import {IEjectionManager} from "./interfaces/IEjectionManager.sol";
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 
 /**
@@ -19,7 +19,7 @@ contract EjectionManager is IEjectionManager, OwnableUpgradeable {
     uint8 internal constant MAX_QUORUM_COUNT = 192;
 
     /// @notice the RegistryCoordinator contract that is the entry point for ejection
-    IRegistryCoordinator public immutable registryCoordinator;
+    ISlashingRegistryCoordinator public immutable registryCoordinator;
     /// @notice the StakeRegistry contract that keeps track of quorum stake
     IStakeRegistry public immutable stakeRegistry;
 
@@ -32,7 +32,7 @@ contract EjectionManager is IEjectionManager, OwnableUpgradeable {
     mapping(uint8 => QuorumEjectionParams) public quorumEjectionParams;
 
     constructor(
-        IRegistryCoordinator _registryCoordinator,
+        ISlashingRegistryCoordinator _registryCoordinator,
         IStakeRegistry _stakeRegistry
     ) {
         registryCoordinator = _registryCoordinator;
