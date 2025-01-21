@@ -5,7 +5,7 @@ import {ISignatureUtils} from "eigenlayer-contracts/src/contracts/interfaces/ISi
 import {IBLSApkRegistry} from "./IBLSApkRegistry.sol";
 import {ISlashingRegistryCoordinator} from "./ISlashingRegistryCoordinator.sol";
 
-interface IRegistryCoordinator is ISlashingRegistryCoordinator {
+interface IRegistryCoordinator {
     
     /**
      * @notice Registers msg.sender as an operator for one or more quorums. If any quorum exceeds its maximum
