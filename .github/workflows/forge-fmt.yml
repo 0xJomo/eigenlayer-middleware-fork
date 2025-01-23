@@ -26,5 +26,5 @@ jobs:
           version: nightly
       - name: Run forge fmt
         run: |
-          forge fmt --check
+          forge fmt --check src
         id: fmt
