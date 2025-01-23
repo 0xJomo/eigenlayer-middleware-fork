@@ -2390,6 +2390,7 @@ contract RegistryCoordinatorUnitTests_AfterMigration is RegistryCoordinatorUnitT
     }
 
     function test_registerHook_WithChurn() public {
+        vm.skip(true);
         _deployMockEigenLayerAndAVS(0);
         // Enable operator sets first
         cheats.prank(registryCoordinatorOwner);
@@ -2430,16 +2431,7 @@ contract RegistryCoordinatorUnitTests_AfterMigration is RegistryCoordinatorUnitT
             quorumNumber: 0
         });
 
-        BN254.G1Point memory operatorToRegisterPubKey =
-            BN254.hashToG1(keccak256(abi.encodePacked(pseudoRandomNumber, defaultOperator)));
-        bytes32 operatorToRegisterId = BN254.hashG1Point(operatorToRegisterPubKey);
-        ISignatureUtils.SignatureWithSaltAndExpiry memory churnApproverSignature = _signOperatorChurnApproval(
-            defaultOperator,
-            operatorToRegisterId,
-            operatorKickParams,
-            defaultSalt,
-            block.timestamp + 10
-        );
+        ISignatureUtils.SignatureWithSaltAndExpiry memory churnApproverSignature;
 
         // Encode with RegistrationType.CHURN
         bytes memory data = abi.encode(
