@@ -137,14 +137,6 @@ contract RegistryCoordinator is SlashingRegistryCoordinator, IRegistryCoordinato
             serviceManager.registerOperatorToAVS(msg.sender, operatorSignature);
             emit OperatorRegistered(msg.sender, operatorId);
         }
-
-        // If the operator kicked is not registered for any quorums, update their status
-        // and deregister them from the AVS via the EigenLayer core contracts
-        if (_operatorInfo[operatorKickParams[0].operator].status != OperatorStatus.REGISTERED) {
-            _operatorInfo[operatorKickParams[0].operator].status = OperatorStatus.DEREGISTERED;
-            serviceManager.deregisterOperatorFromAVS(operatorKickParams[0].operator);
-            emit OperatorDeregistered(operatorKickParams[0].operator, operatorId);
-        }
     }
 
     /// @inheritdoc IRegistryCoordinator
