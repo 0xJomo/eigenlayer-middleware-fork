@@ -359,7 +359,7 @@ contract MockAVSDeployer is Test {
         vm.label(address(allocationManagerImplementation), "AllocationManagerImplementation");
     }
 
-    /// @notice Overwrite RegistryCoorduinator.isOperatorSetAVS to false since by default 
+    /// @notice Overwrite RegistryCoordinator.isOperatorSetAVS to false since by default 
     /// RegistryCoordinator is deployed and intitialized with isOperatorSetAVS set to true
     /// This is to enable testing of RegistryCoordinator in non operator set mode.
     function _setIsOperatorSetAVS(bool isOperatorSetAVS) internal {

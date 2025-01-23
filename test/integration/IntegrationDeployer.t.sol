@@ -195,7 +195,6 @@ abstract contract IntegrationDeployer is Test, IUserDeployer {
             new StrategyManager(delegationManager, pauserRegistry);
         EigenPodManager eigenPodManagerImplementation =
             new EigenPodManager(ethPOSDeposit, eigenPodBeacon, delegationManager, pauserRegistry);
-        console.log("HERE Impl");
         AVSDirectory avsDirectoryImplementation =
             new AVSDirectory(delegationManager, pauserRegistry);
 
@@ -405,6 +404,60 @@ abstract contract IntegrationDeployer is Test, IUserDeployer {
         );
 
         operatorStateRetriever = new OperatorStateRetriever();
+
+        // Setup UAM Permissions
+        cheats.startPrank(serviceManager.owner());
+        // 1. set AVS registrar
+        serviceManager.setAppointee({
+            appointee: serviceManager.owner(),
+            target: address(allocationManager),
+            selector: IAllocationManager.setAVSRegistrar.selector
+        });
+        // 2. create operator sets
+        serviceManager.setAppointee({
+            appointee: address(registryCoordinator),
+            target: address(allocationManager),
+            selector: IAllocationManager.createOperatorSets.selector
+        });
+        // 3. deregister operator from operator sets
+        serviceManager.setAppointee({
+            appointee: address(registryCoordinator),
+            target: address(allocationManager),
+            selector: IAllocationManager.deregisterFromOperatorSets.selector
+        });
+        // 4. add strategies to operator sets
+        serviceManager.setAppointee({
+            appointee: address(registryCoordinator),
+            target: address(stakeRegistry),
+            selector: IAllocationManager.addStrategiesToOperatorSet.selector
+        });
+        // 5. remove strategies from operator sets
+        serviceManager.setAppointee({
+            appointee: address(registryCoordinator),
+            target: address(stakeRegistry),
+            selector: IAllocationManager.removeStrategiesFromOperatorSet.selector
+        });
+        cheats.stopPrank();
+
+        _setIsOperatorSetAVS(false);
+    }
+
+    /// @notice Overwrite RegistryCoordinator.isOperatorSetAVS to false since by default 
+    /// RegistryCoordinator is deployed and intitialized with isOperatorSetAVS set to true
+    /// This is to enable testing of RegistryCoordinator in non operator set mode.
+    function _setIsOperatorSetAVS(bool isOperatorSetAVS) internal {
+        // 1. First read the current value of the entire slot
+        // which holds isOperatorSetAVS and accountIdentifier
+        bytes32 currentSlot = cheats.load(address(registryCoordinator), bytes32(uint256(161)));
+
+        // 2. Clear only the first byte (isOperatorSetAVS) while keeping the rest (accountIdentifier)
+        // We can do this by:
+        // i. Masking out the first byte of the current slot (keep accountIdentifier)
+        // ii. OR it with 0 in the first byte position (set isOperatorSetAVS to false)
+        bytes32 newSlot = (currentSlot & ~bytes32(uint256(0xff))) | bytes32(uint256(isOperatorSetAVS ? 0x01 : 0x00));
+
+        // 3. Store the modified slot
+        cheats.store(address(registryCoordinator), bytes32(uint256(161)), newSlot);
     }
 
     /// @dev Deploy a strategy and its underlying token, push to global lists of tokens/strategies, and whitelist
