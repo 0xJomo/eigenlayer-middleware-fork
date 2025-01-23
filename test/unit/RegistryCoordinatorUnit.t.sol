@@ -365,21 +365,18 @@ contract RegistryCoordinatorUnitTests_RegisterOperator is RegistryCoordinatorUni
 
         cheats.expectEmit(true, true, true, true, address(registryCoordinator));
         emit OperatorSocketUpdate(defaultOperatorId, defaultSocket);
-        cheats.expectEmit(true, true, true, true, address(registryCoordinator));
-        emit OperatorRegistered(defaultOperator, defaultOperatorId);
-
         cheats.expectEmit(true, true, true, true, address(blsApkRegistry));
         emit OperatorAddedToQuorums(defaultOperator, defaultOperatorId, quorumNumbers);
-
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
             cheats.expectEmit(true, true, true, true, address(stakeRegistry));
             emit OperatorStakeUpdate(defaultOperatorId, uint8(quorumNumbers[i]), actualStake);
         }
-
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
             cheats.expectEmit(true, true, true, true, address(indexRegistry));
             emit QuorumIndexUpdate(defaultOperatorId, uint8(quorumNumbers[i]), 0);
         }
+        cheats.expectEmit(true, true, true, true, address(registryCoordinator));
+        emit OperatorRegistered(defaultOperator, defaultOperatorId);
 
         uint256 gasBefore = gasleft();
         cheats.prank(defaultOperator);
@@ -596,14 +593,6 @@ contract RegistryCoordinatorUnitTests_RegisterOperator is RegistryCoordinatorUni
 
         uint256 quorumBitmap = BitmapUtils.orderedBytesArrayToBitmap(quorumNumbers);
 
-        assertEq(registryCoordinator.getOperatorId(defaultOperator), defaultOperatorId);
-        assertEq(
-            keccak256(abi.encode(registryCoordinator.getOperator(defaultOperator))),
-            keccak256(abi.encode(ISlashingRegistryCoordinator.OperatorInfo({
-                operatorId: defaultOperatorId,
-                status: ISlashingRegistryCoordinator.OperatorStatus.REGISTERED
-            })))
-        );
         assertEq(registryCoordinator.getCurrentQuorumBitmap(defaultOperatorId), quorumBitmap);
         assertEq(
             keccak256(abi.encode(registryCoordinator.getQuorumBitmapUpdateByIndex(defaultOperatorId, 0))),
@@ -1562,8 +1551,6 @@ contract RegistryCoordinatorUnitTests_RegisterOperatorWithChurn is RegistryCoord
         cheats.roll(registrationBlockNumber);
         cheats.expectEmit(true, true, true, true, address(registryCoordinator));
         emit OperatorSocketUpdate(operatorToRegisterId, defaultSocket);
-        cheats.expectEmit(true, true, true, true, address(registryCoordinator));
-        emit OperatorRegistered(operatorToRegister, operatorToRegisterId);
 
         cheats.expectEmit(true, true, true, true, address(blsApkRegistry));
         emit OperatorAddedToQuorums(operatorToRegister, operatorToRegisterId, quorumNumbers);
@@ -1581,6 +1568,9 @@ contract RegistryCoordinatorUnitTests_RegisterOperatorWithChurn is RegistryCoord
         emit QuorumIndexUpdate(operatorToRegisterId, defaultQuorumNumber, numOperators - 1);
         cheats.expectEmit(true, true, true, true, address(registryCoordinator));
         emit OperatorDeregistered(operatorKickParams[0].operator, operatorToKickId);
+
+        cheats.expectEmit(true, true, true, true, address(registryCoordinator));
+        emit OperatorRegistered(operatorToRegister, operatorToRegisterId);
 
         {
             ISignatureUtils.SignatureWithSaltAndExpiry memory emptyAVSRegSig;
@@ -2440,7 +2430,16 @@ contract RegistryCoordinatorUnitTests_AfterMigration is RegistryCoordinatorUnitT
             quorumNumber: 0
         });
 
-        ISignatureUtils.SignatureWithSaltAndExpiry memory churnApproverSignature;
+        BN254.G1Point memory operatorToRegisterPubKey =
+            BN254.hashToG1(keccak256(abi.encodePacked(pseudoRandomNumber, defaultOperator)));
+        bytes32 operatorToRegisterId = BN254.hashG1Point(operatorToRegisterPubKey);
+        ISignatureUtils.SignatureWithSaltAndExpiry memory churnApproverSignature = _signOperatorChurnApproval(
+            defaultOperator,
+            operatorToRegisterId,
+            operatorKickParams,
+            defaultSalt,
+            block.timestamp + 10
+        );
 
         // Encode with RegistrationType.CHURN
         bytes memory data = abi.encode(

@@ -144,26 +144,47 @@ contract SlashingRegistryCoordinator is
         bytes calldata data
     ) external override onlyAllocationManager onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR) {
         require(isOperatorSetAVS, OperatorSetsNotEnabled());
-        for (uint256 i = 0; i < operatorSetIds.length; i++) {
-            require(!isM2Quorum[uint8(operatorSetIds[i])], OperatorSetsNotSupported());
-        }
-        bytes memory quorumNumbers = new bytes(operatorSetIds.length);
-        for (uint256 i = 0; i < operatorSetIds.length; i++) {
-            quorumNumbers[i] = bytes1(uint8(operatorSetIds[i]));
-        }
+        bytes memory quorumNumbers = _getQuorumNumbers(operatorSetIds);
 
-        // Handle churn or normal registration based on first byte in `data`
-        RegistrationType registrationType = RegistrationType(uint8(bytes1(data[0:1])));
+        (
+            RegistrationType registrationType,
+            string memory socket,
+            IBLSApkRegistry.PubkeyRegistrationParams memory params
+        ) = abi.decode(data, (RegistrationType, string, IBLSApkRegistry.PubkeyRegistrationParams));
+
+        /**
+         * If the operator has NEVER registered a pubkey before, use `params` to register
+         * their pubkey in blsApkRegistry
+         *
+         * If the operator HAS registered a pubkey, `params` is ignored and the pubkey hash
+         * (operatorId) is fetched instead
+         */
+        bytes32 operatorId = _getOrCreateOperatorId(operator, params);
+
         if (registrationType == RegistrationType.NORMAL) {
-            (, string memory socket, IBLSApkRegistry.PubkeyRegistrationParams memory params) = abi.decode(data, (RegistrationType, string, IBLSApkRegistry.PubkeyRegistrationParams));
-            bytes32 operatorId = _getOrCreateOperatorId(operator, params);
-            _registerOperatorToOperatorSet(operator, operatorId, quorumNumbers, socket);
+            uint32[] memory numOperatorsPerQuorum = _registerOperator({
+                operator: operator,
+                operatorId: operatorId,
+                quorumNumbers: quorumNumbers,
+                socket: socket
+            }).numOperatorsPerQuorum;
+
+            // For each quorum, validate that the new operator count does not exceed the maximum
+            // (If it does, an operator needs to be replaced -- see `registerOperatorWithChurn`)
+            for (uint256 i = 0; i < quorumNumbers.length; i++) {
+                uint8 quorumNumber = uint8(quorumNumbers[i]);
+
+                require(
+                    numOperatorsPerQuorum[i] <= _quorumParams[quorumNumber].maxOperatorCount,
+                    MaxQuorumsReached()
+                );
+            }
         } else if (registrationType == RegistrationType.CHURN) {
             // Decode registration data from bytes
             (
                 ,
-                string memory socket,
-                IBLSApkRegistry.PubkeyRegistrationParams memory params,
+                ,
+                ,
                 OperatorKickParam[] memory operatorKickParams,
                 SignatureWithSaltAndExpiry memory churnApproverSignature
             ) = abi.decode(
@@ -176,26 +197,31 @@ contract SlashingRegistryCoordinator is
                     SignatureWithSaltAndExpiry
                 )
             );
-
-            _registerOperatorWithChurn(operator, quorumNumbers, socket, params, operatorKickParams, churnApproverSignature);
+            _registerOperatorWithChurn({
+                operator: operator,
+                operatorId: operatorId,
+                quorumNumbers: quorumNumbers,
+                socket: socket,
+                operatorKickParams: operatorKickParams,
+                churnApproverSignature: churnApproverSignature
+            });
         } else {
             revert InvalidRegistrationType();
+        }
+
+        // If the operator wasn't registered for any quorums, update their status
+        // and register them with this AVS in EigenLayer core (DelegationManager)
+        if (_operatorInfo[operator].status != OperatorStatus.REGISTERED) {
+            _operatorInfo[operator] = OperatorInfo(operatorId, OperatorStatus.REGISTERED);
         }
     }
 
     function deregisterOperator(
         address operator,
         uint32[] memory operatorSetIds
-    ) external override onlyAllocationManager onlyWhenNotPaused(PAUSED_REGISTER_OPERATOR) {
+    ) external override onlyAllocationManager onlyWhenNotPaused(PAUSED_DEREGISTER_OPERATOR) {
         require(isOperatorSetAVS, OperatorSetsNotEnabled());
-        for (uint256 i = 0; i < operatorSetIds.length; i++) {
-            require(!isM2Quorum[uint8(operatorSetIds[i])], OperatorSetsNotSupported());
-        }
-        bytes memory quorumNumbers = new bytes(operatorSetIds.length);
-        for (uint256 i = 0; i < operatorSetIds.length; i++) {
-            quorumNumbers[i] = bytes1(uint8(operatorSetIds[i]));
-        }
-
+        bytes memory quorumNumbers = _getQuorumNumbers(operatorSetIds);
         _deregisterOperator(operator, quorumNumbers);
     }
 
@@ -408,7 +434,7 @@ contract SlashingRegistryCoordinator is
      * @notice Register the operator for one or more quorums. This method updates the
      * operator's quorum bitmap, socket, and status, then registers them with each registry.
      */
-    function _registerOperatorToOperatorSet(
+    function _registerOperator(
         address operator,
         bytes32 operatorId,
         bytes memory quorumNumbers,
@@ -451,12 +477,6 @@ contract SlashingRegistryCoordinator is
 
         emit OperatorSocketUpdate(operatorId, socket);
 
-        // If the operator wasn't registered for any quorums, update their status
-        // and register them with this AVS in EigenLayer core (DelegationManager)
-        if (_operatorInfo[operator].status != OperatorStatus.REGISTERED) {
-            _operatorInfo[operator] = OperatorInfo(operatorId, OperatorStatus.REGISTERED);
-        }
-
         // Register the operator with the BLSApkRegistry, StakeRegistry, and IndexRegistry
         blsApkRegistry.registerOperator(operator, quorumNumbers);
         (results.operatorStakes, results.totalStakes) =
@@ -471,22 +491,13 @@ contract SlashingRegistryCoordinator is
 
     function _registerOperatorWithChurn(
         address operator,
+        bytes32 operatorId,
         bytes memory quorumNumbers,
         string memory socket,
-        IBLSApkRegistry.PubkeyRegistrationParams memory params,
         OperatorKickParam[] memory operatorKickParams,
         SignatureWithSaltAndExpiry memory churnApproverSignature
     ) internal virtual {
         require(operatorKickParams.length == quorumNumbers.length, InputLengthMismatch());
-
-        /**
-         * If the operator has NEVER registered a pubkey before, use `params` to register
-         * their pubkey in blsApkRegistry
-         *
-         * If the operator HAS registered a pubkey, `params` is ignored and the pubkey hash
-         * (operatorId) is fetched instead
-         */
-        bytes32 operatorId = _getOrCreateOperatorId(operator, params);
 
         // Verify the churn approver's signature for the registering operator and kick params
         _verifyChurnApproverSignature({
@@ -498,7 +509,7 @@ contract SlashingRegistryCoordinator is
 
         // Register the operator in each of the registry contracts and update the operator's
         // quorum bitmap and registration status
-        RegisterResults memory results = _registerOperatorToOperatorSet(operator, operatorId, quorumNumbers, socket);
+        RegisterResults memory results = _registerOperator(operator, operatorId, quorumNumbers, socket);
 
         // Check that each quorum's operator count is below the configured maximum. If the max
         // is exceeded, use `operatorKickParams` to deregister an existing operator to make space
@@ -878,6 +889,16 @@ contract SlashingRegistryCoordinator is
         return QuorumBitmapHistoryLib.getQuorumBitmapIndexAtBlockNumber(_operatorBitmapHistory,blockNumber, operatorId);
     }
 
+    /// @notice Returns the quorum numbers for the provided `OperatorSetIds`
+    /// OperatorSetIds are used in the AllocationManager to identify operator sets for a given AVS
+    function _getQuorumNumbers(uint32[] memory operatorSetIds) internal pure returns (bytes memory) {
+        bytes memory quorumNumbers = new bytes(operatorSetIds.length);
+        for (uint256 i = 0; i < operatorSetIds.length; i++) {
+            quorumNumbers[i] = bytes1(uint8(operatorSetIds[i]));
+        }
+        return quorumNumbers;
+    }
+
     function _setOperatorSetParams(
         uint8 quorumNumber,
         OperatorSetParam memory operatorSetParams
@@ -900,10 +921,10 @@ contract SlashingRegistryCoordinator is
         accountIdentifier = _accountIdentifier;
     }
 
-    /// @dev Hook to allow for any pre-register logic in `_registerOperatorToOperatorSet`
+    /// @dev Hook to allow for any pre-register logic in `_registerOperator`
     function _beforeRegisterOperator(address operator, bytes32 operatorId, bytes memory quorumNumbers, uint192 currentBitmap) internal virtual {}
 
-    /// @dev Hook to allow for any post-register logic in `_registerOperatorToOperatorSet`
+    /// @dev Hook to allow for any post-register logic in `_registerOperator`
     function _afterRegisterOperator(address operator, bytes32 operatorId, bytes memory quorumNumbers, uint192 newBitmap) internal virtual {}
 
     /// @dev Hook to allow for any pre-deregister logic in `_deregisterOperator`

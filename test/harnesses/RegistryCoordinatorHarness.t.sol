@@ -45,7 +45,7 @@ contract RegistryCoordinatorHarness is RegistryCoordinator, Test {
         string memory socket,
         SignatureWithSaltAndExpiry memory operatorSignature
     ) external returns (RegisterResults memory results) {
-        return _registerOperator(operator, operatorId, quorumNumbers, socket, operatorSignature);
+        return _registerOperator(operator, operatorId, quorumNumbers, socket);
     }
 
     // @notice exposes the internal `_deregisterOperator` function, overriding all access controls
