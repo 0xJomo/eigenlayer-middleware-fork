@@ -215,7 +215,7 @@ contract SlashingRegistryCoordinator is
         // and register them with this AVS in EigenLayer core (DelegationManager)
         if (_operatorInfo[operator].status != OperatorStatus.REGISTERED) {
             _operatorInfo[operator] = OperatorInfo(operatorId, OperatorStatus.REGISTERED);
-            emit OperatorRegistered(msg.sender, operatorId);
+            emit OperatorRegistered(operator, operatorId);
         }
     }
 
