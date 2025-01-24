@@ -331,7 +331,8 @@ contract MockAVSDeployer is Test {
 
         operatorStateRetriever = new OperatorStateRetriever();
 
-        _setoperatorSetsEnabled(false);
+        registryCoordinator.setOperatorSetsEnabled(false);
+        registryCoordinator.setM2QuorumsDisabled(false);
     }
 
     function _labelContracts() internal {
@@ -357,24 +358,6 @@ contract MockAVSDeployer is Test {
         vm.label(address(indexRegistryImplementation), "IndexRegistryImplementation");
         vm.label(address(serviceManagerImplementation), "ServiceManagerImplementation");
         vm.label(address(allocationManagerImplementation), "AllocationManagerImplementation");
-    }
-
-    /// @notice Overwrite RegistryCoordinator.operatorSetsEnabled to false since by default 
-    /// RegistryCoordinator is deployed and intitialized with operatorSetsEnabled set to true
-    /// This is to enable testing of RegistryCoordinator in non operator set mode.
-    function _setoperatorSetsEnabled(bool operatorSetsEnabled) internal {
-        // 1. First read the current value of the entire slot
-        // which holds operatorSetsEnabled and accountIdentifier
-        bytes32 currentSlot = cheats.load(address(registryCoordinator), bytes32(uint256(161)));
-
-        // 2. Clear only the first byte (operatorSetsEnabled) while keeping the rest (accountIdentifier)
-        // We can do this by:
-        // i. Masking out the first byte of the current slot (keep accountIdentifier)
-        // ii. OR it with 0 in the first byte position (set operatorSetsEnabled to false)
-        bytes32 newSlot = (currentSlot & ~bytes32(uint256(0xff))) | bytes32(uint256(operatorSetsEnabled ? 0x01 : 0x00));
-
-        // 3. Store the modified slot
-        cheats.store(address(registryCoordinator), bytes32(uint256(161)), newSlot);
     }
 
     /**

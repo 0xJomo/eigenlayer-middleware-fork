@@ -66,4 +66,12 @@ contract RegistryCoordinatorHarness is RegistryCoordinator, Test {
     function _updateOperatorBitmapExternal(bytes32 operatorId, uint192 quorumBitmap) external {
         _updateOperatorBitmap(operatorId, quorumBitmap);
     }
+
+    function setOperatorSetsEnabled(bool enabled) external {
+        operatorSetsEnabled = enabled;
+    }
+
+    function setM2QuorumsDisabled(bool disabled) external {
+        m2QuorumsDisabled = disabled;
+    }
 }
