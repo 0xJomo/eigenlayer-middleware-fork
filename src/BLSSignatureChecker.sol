@@ -35,7 +35,9 @@ contract BLSSignatureChecker is IBLSSignatureChecker {
         _;
     }
 
-    constructor(ISlashingRegistryCoordinator _registryCoordinator) {
+    constructor(
+        ISlashingRegistryCoordinator _registryCoordinator
+    ) {
         registryCoordinator = _registryCoordinator;
         stakeRegistry = _registryCoordinator.stakeRegistry();
         blsApkRegistry = _registryCoordinator.blsApkRegistry();

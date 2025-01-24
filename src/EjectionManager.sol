@@ -30,10 +30,7 @@ contract EjectionManager is IEjectionManager, OwnableUpgradeable {
     /// @notice Ratelimit parameters for each quorum
     mapping(uint8 => QuorumEjectionParams) public quorumEjectionParams;
 
-    constructor(
-        ISlashingRegistryCoordinator _registryCoordinator,
-        IStakeRegistry _stakeRegistry
-    ) {
+    constructor(ISlashingRegistryCoordinator _registryCoordinator, IStakeRegistry _stakeRegistry) {
         registryCoordinator = _registryCoordinator;
         stakeRegistry = _stakeRegistry;
 

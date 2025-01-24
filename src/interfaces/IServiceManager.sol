@@ -101,11 +101,7 @@ interface IServiceManager is IServiceManagerUI, IServiceManagerErrors {
      * @param selector The function selector to remove the appointee for
      * @dev Only callable by the owner of the contract
      */
-    function removeAppointee(
-        address appointee,
-        address target,
-        bytes4 selector
-    ) external;
+    function removeAppointee(address appointee, address target, bytes4 selector) external;
 
     /**
      * @notice Deregisters an operator from specified operator sets
@@ -113,5 +109,8 @@ interface IServiceManager is IServiceManagerUI, IServiceManagerErrors {
      * @param operatorSetIds The IDs of the operator sets to deregister from
      * @dev Only callable by the RegistryCoordinator
      */
-    function deregisterOperatorFromOperatorSets(address operator, uint32[] memory operatorSetIds) external;
+    function deregisterOperatorFromOperatorSets(
+        address operator,
+        uint32[] memory operatorSetIds
+    ) external;
 }

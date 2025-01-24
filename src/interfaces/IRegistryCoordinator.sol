@@ -6,7 +6,6 @@ import {IBLSApkRegistry} from "./IBLSApkRegistry.sol";
 import {ISlashingRegistryCoordinator} from "./ISlashingRegistryCoordinator.sol";
 
 interface IRegistryCoordinator {
-
     /// Emits when operator sets mode is enabled
     event OperatorSetsEnabled();
     /// Emits when M2 quorums are disabled
@@ -54,7 +53,9 @@ interface IRegistryCoordinator {
      * @notice Deregisters the caller from one or more quorums
      * @param quorumNumbers is an ordered byte array containing the quorum numbers being deregistered from
      */
-    function deregisterOperator(bytes memory quorumNumbers) external;
+    function deregisterOperator(
+        bytes memory quorumNumbers
+    ) external;
 
     /**
      * @notice Enables operator sets mode. This is by default initialized to set `operatorSetsEnabled` to True.

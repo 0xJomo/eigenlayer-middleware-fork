@@ -5,7 +5,8 @@ import {IDelegationManager} from
     "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
 import {OperatorSet} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
-import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IAllocationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
 
 import {StakeRegistryStorage, IStrategy} from "./StakeRegistryStorage.sol";
 
@@ -48,12 +49,14 @@ contract StakeRegistry is StakeRegistryStorage {
         IDelegationManager _delegationManager,
         IAVSDirectory _avsDirectory,
         IAllocationManager _allocationManager
-    ) StakeRegistryStorage(
-        _slashingRegistryCoordinator,
-        _delegationManager,
-        _avsDirectory,
-        _allocationManager
-    ) {}
+    )
+        StakeRegistryStorage(
+            _slashingRegistryCoordinator,
+            _delegationManager,
+            _avsDirectory,
+            _allocationManager
+        )
+    {}
 
     /**
      *
@@ -79,7 +82,6 @@ contract StakeRegistry is StakeRegistryStorage {
         bytes32 operatorId,
         bytes calldata quorumNumbers
     ) public virtual onlySlashingRegistryCoordinator returns (uint96[] memory, uint96[] memory) {
-
         uint96[] memory currentStakes = new uint96[](quorumNumbers.length);
         uint96[] memory totalStakes = new uint96[](quorumNumbers.length);
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
@@ -557,7 +559,9 @@ contract StakeRegistry is StakeRegistryStorage {
             uint32(block.number + slashableStakeLookAheadPerQuorum[quorumNumber]);
 
         uint256[][] memory slashableShares = allocationManager.getMinimumSlashableStake(
-            OperatorSet(ISlashingRegistryCoordinator(registryCoordinator).accountIdentifier(), quorumNumber),
+            OperatorSet(
+                ISlashingRegistryCoordinator(registryCoordinator).accountIdentifier(), quorumNumber
+            ),
             operators,
             strategiesPerQuorum[quorumNumber],
             beforeTimestamp
@@ -633,7 +637,9 @@ contract StakeRegistry is StakeRegistryStorage {
      * @param quorumNumber The quorum number to check
      * @return True if the quorum is an operator set quorum
      */
-    function isOperatorSetQuorum(uint8 quorumNumber) public view returns (bool) {
+    function isOperatorSetQuorum(
+        uint8 quorumNumber
+    ) public view returns (bool) {
         bool isM2 = ISlashingRegistryCoordinator(registryCoordinator).isM2Quorum(quorumNumber);
         bool isOperatorSet = ISlashingRegistryCoordinator(registryCoordinator).operatorSetsEnabled();
         return isOperatorSet && !isM2;
@@ -889,13 +895,15 @@ contract StakeRegistry is StakeRegistryStorage {
         emit LookAheadPeriodChanged(oldLookAheadDays, _lookAheadBlocks);
     }
 
-
     function _checkSlashingRegistryCoordinator() internal view {
         require(msg.sender == registryCoordinator, OnlySlashingRegistryCoordinator());
     }
 
     function _checkSlashingRegistryCoordinatorOwner() internal view {
-        require(msg.sender == ISlashingRegistryCoordinator(registryCoordinator).owner(), OnlySlashingRegistryCoordinatorOwner());
+        require(
+            msg.sender == ISlashingRegistryCoordinator(registryCoordinator).owner(),
+            OnlySlashingRegistryCoordinatorOwner()
+        );
     }
 
     function _checkQuorumExists(

@@ -2,7 +2,8 @@
 pragma solidity ^0.8.27;
 
 import {IPauserRegistry} from "eigenlayer-contracts/src/contracts/interfaces/IPauserRegistry.sol";
-import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IAllocationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
 import {IBLSApkRegistry} from "./interfaces/IBLSApkRegistry.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 import {IIndexRegistry} from "./interfaces/IIndexRegistry.sol";
@@ -145,7 +146,10 @@ contract RegistryCoordinator is SlashingRegistryCoordinator, IRegistryCoordinato
     ) external onlyWhenNotPaused(PAUSED_DEREGISTER_OPERATOR) {
         // Check that the quorum numbers are M2 quorums
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
-            require(!operatorSetsEnabled || _isM2Quorum(uint8(quorumNumbers[i])), OperatorSetsAlreadyEnabled());
+            require(
+                !operatorSetsEnabled || _isM2Quorum(uint8(quorumNumbers[i])),
+                OperatorSetsAlreadyEnabled()
+            );
         }
         _deregisterOperator({operator: msg.sender, quorumNumbers: quorumNumbers});
     }
@@ -173,7 +177,12 @@ contract RegistryCoordinator is SlashingRegistryCoordinator, IRegistryCoordinato
     }
 
     /// @dev Hook to allow for any post-deregister logic
-    function _afterDeregisterOperator(address operator, bytes32 operatorId, bytes memory quorumNumbers, uint192 newBitmap) internal virtual override {
+    function _afterDeregisterOperator(
+        address operator,
+        bytes32 operatorId,
+        bytes memory quorumNumbers,
+        uint192 newBitmap
+    ) internal virtual override {
         uint256 operatorM2QuorumBitmap = newBitmap.minus(M2quorumBitmap);
         // If the operator is no longer registered for any M2 quorums, update their status and deregister
         // them from the AVS via the EigenLayer core contracts
@@ -184,9 +193,11 @@ contract RegistryCoordinator is SlashingRegistryCoordinator, IRegistryCoordinato
 
     /// @dev Returns a bitmap with all bits set up to `quorumCount`. Used for bit-masking quorum numbers
     /// and differentiating between operator sets and M2 quorums
-    function _getQuorumBitmap(uint256 quorumCount) internal pure returns (uint256) {
+    function _getQuorumBitmap(
+        uint256 quorumCount
+    ) internal pure returns (uint256) {
         // This creates a number where all bits up to quorumCount are set to 1
-        // For example: 
+        // For example:
         // quorumCount = 3 -> 0111 (7 in decimal)
         // quorumCount = 5 -> 011111 (31 in decimal)
         // This is a safe operation since we limit MAX_QUORUM_COUNT to 192

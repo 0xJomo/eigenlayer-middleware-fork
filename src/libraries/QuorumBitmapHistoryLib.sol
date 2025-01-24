@@ -85,7 +85,8 @@ library QuorumBitmapHistoryLib {
         uint32 blockNumber,
         uint256 index
     ) internal view returns (uint192) {
-        ISlashingRegistryCoordinator.QuorumBitmapUpdate memory quorumBitmapUpdate = self[operatorId][index];
+        ISlashingRegistryCoordinator.QuorumBitmapUpdate memory quorumBitmapUpdate =
+            self[operatorId][index];
 
         /**
          * Validate that the update is valid for the given blockNumber:

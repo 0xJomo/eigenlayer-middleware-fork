@@ -30,7 +30,9 @@ abstract contract BLSApkRegistryStorage is Initializable, IBLSApkRegistry {
     /// @notice maps quorumNumber => current aggregate pubkey of quorum
     mapping(uint8 => BN254.G1Point) public currentApk;
 
-    constructor(ISlashingRegistryCoordinator _slashingRegistryCoordinator) {
+    constructor(
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator
+    ) {
         registryCoordinator = address(_slashingRegistryCoordinator);
         // disable initializers so that the implementation contract cannot be initialized
         _disableInitializers();

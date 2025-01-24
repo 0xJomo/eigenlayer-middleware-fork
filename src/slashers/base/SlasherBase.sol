@@ -3,7 +3,10 @@ pragma solidity ^0.8.27;
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 import {SlasherStorage, ISlashingRegistryCoordinator} from "./SlasherStorage.sol";
-import {IAllocationManagerTypes, IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {
+    IAllocationManagerTypes,
+    IAllocationManager
+} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
 import {IStrategy} from "eigenlayer-contracts/src/contracts/interfaces/IStrategy.sol";
 
 abstract contract SlasherBase is Initializable, SlasherStorage {
@@ -33,7 +36,13 @@ abstract contract SlasherBase is Initializable, SlasherStorage {
             avs: slashingRegistryCoordinator.accountIdentifier(),
             params: _params
         });
-        emit OperatorSlashed(_requestId, _params.operator, _params.operatorSetId, _params.wadsToSlash, _params.description);
+        emit OperatorSlashed(
+            _requestId,
+            _params.operator,
+            _params.operatorSetId,
+            _params.wadsToSlash,
+            _params.description
+        );
     }
 
     function _checkSlasher(

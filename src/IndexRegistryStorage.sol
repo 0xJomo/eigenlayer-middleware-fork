@@ -31,7 +31,7 @@ abstract contract IndexRegistryStorage is Initializable, IIndexRegistry {
 
     constructor(
         ISlashingRegistryCoordinator _slashingRegistryCoordinator
-    ){
+    ) {
         registryCoordinator = address(_slashingRegistryCoordinator);
         // disable initializers so that the implementation contract cannot be initialized
         _disableInitializers();

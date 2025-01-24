@@ -5,6 +5,7 @@ import {IAllocationManager} from
     "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
 import {ISlasher} from "../../interfaces/ISlasher.sol";
 import {ISlashingRegistryCoordinator} from "../../interfaces/ISlashingRegistryCoordinator.sol";
+
 contract SlasherStorage is ISlasher {
     /**
      *
@@ -16,15 +17,19 @@ contract SlasherStorage is ISlasher {
     IAllocationManager public immutable allocationManager;
     /// @notice the SlashingRegistryCoordinator for this AVS
     ISlashingRegistryCoordinator public immutable slashingRegistryCoordinator;
-    /*******************************************************************************
-                                       STATE
-    *******************************************************************************/
-
+    /**
+     *
+     *                                    STATE
+     *
+     */
     address public slasher;
 
     uint256 public nextRequestId;
 
-    constructor(IAllocationManager _allocationManager, ISlashingRegistryCoordinator _slashingRegistryCoordinator) {
+    constructor(
+        IAllocationManager _allocationManager,
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator
+    ) {
         allocationManager = _allocationManager;
         slashingRegistryCoordinator = _slashingRegistryCoordinator;
     }
