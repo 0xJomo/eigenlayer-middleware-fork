@@ -2,7 +2,8 @@
 pragma solidity ^0.8.27;
 
 import "../../src/unaudited/ECDSAServiceManagerBase.sol";
-import {IAllocationManagerTypes} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IAllocationManagerTypes} from
+    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
 
 contract ECDSAServiceManagerMock is ECDSAServiceManagerBase {
     constructor(
@@ -28,21 +29,24 @@ contract ECDSAServiceManagerMock is ECDSAServiceManagerBase {
         __ServiceManagerBase_init(initialOwner, rewardsInitiator);
     }
 
-    function createOperatorSets(IAllocationManager.CreateSetParams[] memory params) external{}
-
-    function addStrategyToOperatorSet(uint32 operatorSetId, IStrategy[] memory strategies) external{}
-
-    function removeStrategiesFromOperatorSet(uint32 operatorSetId, IStrategy[] memory strategies) external{}
-
-    function registerOperatorToOperatorSets(
-        address operator,
-        uint32[] calldata operatorSetIds,
-        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature
+    function addPendingAdmin(
+        address admin
     ) external {}
 
-    function deregisterOperatorFromOperatorSets(address operator, uint32[] calldata operatorSetIds) external{}
+    function removePendingAdmin(
+        address pendingAdmin
+    ) external {}
 
-    function slashOperator(IAllocationManagerTypes.SlashingParams memory params) external override {
-        // Mock implementation - no actual slashing occurs
-    }
+    function deregisterOperatorFromOperatorSets(
+        address operator,
+        uint32[] memory operatorSetIds
+    ) external {}
+
+    function removeAdmin(
+        address admin
+    ) external {}
+
+    function setAppointee(address appointee, address target, bytes4 selector) external {}
+
+    function removeAppointee(address appointee, address target, bytes4 selector) external {}
 }

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.12;
 
-import {IRegistry} from "./IRegistry.sol";
-
 interface IIndexRegistryErrors {
     /// @dev Thrown when a function is called by an address that is not the RegistryCoordinator
     error OnlyRegistryCoordinator();
@@ -12,36 +10,67 @@ interface IIndexRegistryErrors {
     error OperatorIdDoesNotExist();
 }
 
-/**
- * @title Interface for a `Registry`-type contract that keeps track of an ordered list of operators for up to 256 quorums.
- * @author Layr Labs, Inc.
- */
-interface IIndexRegistry is IRegistry, IIndexRegistryErrors {
-    // EVENTS
-    
-    // emitted when an operator's index in the ordered operator list for the quorum with number `quorumNumber` is updated
-    event QuorumIndexUpdate(bytes32 indexed operatorId, uint8 quorumNumber, uint32 newOperatorIndex);
-
-    // DATA STRUCTURES
-
-    // struct used to give definitive ordering to operators at each blockNumber. 
+interface IIndexRegistryTypes {
+    /// @notice Represents an update to an operator's status at a specific index.
+    /// @param fromBlockNumber The block number from which this update takes effect.
+    /// @param operatorId The unique identifier of the operator.
     struct OperatorUpdate {
-        // blockNumber number from which `operatorIndex` was the operators index
-        // the operator's index is the first entry such that `blockNumber >= entry.fromBlockNumber`
         uint32 fromBlockNumber;
-        // the operator at this index
         bytes32 operatorId;
     }
 
-    // struct used to denote the number of operators in a quorum at a given blockNumber
+    /// @notice Represents an update to the total number of operators in a quorum.
+    /// @param fromBlockNumber The block number from which this update takes effect.
+    /// @param numOperators The total number of operators after the update.
     struct QuorumUpdate {
-        // The total number of operators at a `blockNumber` is the first entry such that `blockNumber >= entry.fromBlockNumber`
         uint32 fromBlockNumber;
-        // The number of operators at `fromBlockNumber`
         uint32 numOperators;
     }
+}
 
-    /**
+interface IIndexRegistryEvents is IIndexRegistryTypes {
+    /*
+     * @notice Emitted when an operator's index in a quorum is updated.
+     * @param operatorId The unique identifier of the operator.
+     * @param quorumNumber The identifier of the quorum.
+     * @param newOperatorIndex The new index assigned to the operator.
+     */
+    event QuorumIndexUpdate(
+        bytes32 indexed operatorId, uint8 quorumNumber, uint32 newOperatorIndex
+    );
+}
+
+interface IIndexRegistry is IIndexRegistryErrors, IIndexRegistryEvents {
+    /*
+     * @notice Returns the special identifier used to indicate a non-existent operator.
+     * @return The bytes32 constant OPERATOR_DOES_NOT_EXIST_ID.
+     */
+    function OPERATOR_DOES_NOT_EXIST_ID() external pure returns (bytes32);
+
+    /*
+     * @notice Returns the address of the RegistryCoordinator contract.
+     * @return The address of the RegistryCoordinator.
+     */
+    function registryCoordinator() external view returns (address);
+
+    /*
+     * @notice Returns the current index of an operator with ID `operatorId` in quorum `quorumNumber`.
+     * @dev This mapping is NOT updated when an operator is deregistered,
+     * so it's possible that an index retrieved from this mapping is inaccurate.
+     * If you're querying for an operator that might be deregistered, ALWAYS
+     * check this index against the latest `_operatorIndexHistory` entry.
+     * @param quorumNumber The identifier of the quorum.
+     * @param operatorId The unique identifier of the operator.
+     * @return The current index of the operator.
+     */
+    function currentOperatorIndex(
+        uint8 quorumNumber,
+        bytes32 operatorId
+    ) external view returns (uint32);
+
+    // ACTIONS
+
+    /*
      * @notice Registers the operator with the specified `operatorId` for the quorums specified by `quorumNumbers`.
      * @param operatorId is the id of the operator that is being registered
      * @param quorumNumbers is the quorum numbers the operator is registered for

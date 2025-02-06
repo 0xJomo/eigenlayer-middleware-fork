@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.12;
 
-import {BLSApkRegistryStorage} from "./BLSApkRegistryStorage.sol";
+import {BLSApkRegistryStorage, IBLSApkRegistry} from "./BLSApkRegistryStorage.sol";
 
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 
 import {BN254} from "./libraries/BN254.sol";
 
@@ -20,24 +20,16 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
 
     /// @notice Sets the (immutable) `registryCoordinator` address
     constructor(
-        IRegistryCoordinator _registryCoordinator
-    ) BLSApkRegistryStorage(_registryCoordinator) {}
-
-    /*******************************************************************************
-                      EXTERNAL FUNCTIONS - REGISTRY COORDINATOR
-    *******************************************************************************/
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator
+    ) BLSApkRegistryStorage(_slashingRegistryCoordinator) {}
 
     /**
-     * @notice Registers the `operator`'s pubkey for the specified `quorumNumbers`.
-     * @param operator The address of the operator to register.
-     * @param quorumNumbers The quorum numbers the operator is registering for, where each byte is an 8 bit integer quorumNumber.
-     * @dev access restricted to the RegistryCoordinator
-     * @dev Preconditions (these are assumed, not validated in this contract):
-     *         1) `quorumNumbers` has no duplicates
-     *         2) `quorumNumbers.length` != 0
-     *         3) `quorumNumbers` is ordered in ascending order
-     *         4) the operator is not already registered
+     *
+     *                   EXTERNAL FUNCTIONS - REGISTRY COORDINATOR
+     *
      */
+
+    /// @inheritdoc IBLSApkRegistry
     function registerOperator(
         address operator,
         bytes memory quorumNumbers
@@ -52,57 +44,35 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         emit OperatorAddedToQuorums(operator, getOperatorId(operator), quorumNumbers);
     }
 
-    /**
-     * @notice Deregisters the `operator`'s pubkey for the specified `quorumNumbers`.
-     * @param operator The address of the operator to deregister.
-     * @param quorumNumbers The quorum numbers the operator is deregistering from, where each byte is an 8 bit integer quorumNumber.
-     * @dev access restricted to the RegistryCoordinator
-     * @dev Preconditions (these are assumed, not validated in this contract):
-     *         1) `quorumNumbers` has no duplicates
-     *         2) `quorumNumbers.length` != 0
-     *         3) `quorumNumbers` is ordered in ascending order
-     *         4) the operator is not already deregistered
-     *         5) `quorumNumbers` is a subset of the quorumNumbers that the operator is registered for
-     */
+    /// @inheritdoc IBLSApkRegistry
     function deregisterOperator(
         address operator,
         bytes memory quorumNumbers
     ) public virtual onlyRegistryCoordinator {
         // Get the operator's pubkey. Reverts if they have not registered a key
-        (BN254.G1Point memory pubkey, bytes32 pubkeyHash) = getRegisteredPubkey(operator);
-
-        delete operatorToPubkey[operator];
-        delete operatorToPubkeyHash[operator];
-        delete pubkeyHashToOperator[pubkeyHash];
+        (BN254.G1Point memory pubkey,) = getRegisteredPubkey(operator);
 
         // Update each quorum's aggregate pubkey
         _processQuorumApkUpdate(quorumNumbers, pubkey.negate());
         emit OperatorRemovedFromQuorums(operator, getOperatorId(operator), quorumNumbers);
     }
 
-    /**
-     * @notice Initializes a new quorum by pushing its first apk update
-     * @param quorumNumber The number of the new quorum
-     */
-    function initializeQuorum(uint8 quorumNumber) public virtual onlyRegistryCoordinator {
+    /// @inheritdoc IBLSApkRegistry
+    function initializeQuorum(
+        uint8 quorumNumber
+    ) public virtual onlyRegistryCoordinator {
         require(apkHistory[quorumNumber].length == 0, QuorumAlreadyExists());
 
-        apkHistory[quorumNumber].push(ApkUpdate({
-        apkHash : bytes24(0),
-        updateBlockNumber : uint32(block.number),
-        nextUpdateBlockNumber : 0
-        }));
-        bytes24[] memory newApkHashes = new bytes24[](1);
-        newApkHashes[0] = bytes24(0);
-        emit QuorumsAPKUpdates(abi.encodePacked(quorumNumber), newApkHashes);
+        apkHistory[quorumNumber].push(
+            ApkUpdate({
+                apkHash: bytes24(0),
+                updateBlockNumber: uint32(block.number),
+                nextUpdateBlockNumber: 0
+            })
+        );
     }
 
-    /**
-     * @notice Called by the RegistryCoordinator register an operator as the owner of a BLS public key.
-     * @param operator is the operator for whom the key is being registered
-     * @param params contains the G1 & G2 public keys of the operator, and a signature proving their ownership
-     * @param pubkeyRegistrationMessageHash is a hash that the operator must sign to prove key ownership
-     */
+    /// @inheritdoc IBLSApkRegistry
     function registerBLSPublicKey(
         address operator,
         PubkeyRegistrationParams calldata params,
@@ -110,28 +80,35 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
     ) external onlyRegistryCoordinator returns (bytes32 operatorId) {
         bytes32 pubkeyHash = BN254.hashG1Point(params.pubkeyG1);
         require(pubkeyHash != ZERO_PK_HASH, ZeroPubKey());
-        require(operatorToPubkeyHash[operator] == bytes32(0), OperatorAlreadyRegistered());
+        require(getOperatorId(operator) == bytes32(0), OperatorAlreadyRegistered());
         require(pubkeyHashToOperator[pubkeyHash] == address(0), BLSPubkeyAlreadyRegistered());
 
         // gamma = h(sigma, P, P', H(m))
-        uint256 gamma = uint256(keccak256(abi.encodePacked(
-                params.pubkeyRegistrationSignature.X,
-                params.pubkeyRegistrationSignature.Y,
-                params.pubkeyG1.X,
-                params.pubkeyG1.Y,
-                params.pubkeyG2.X,
-                params.pubkeyG2.Y,
-                pubkeyRegistrationMessageHash.X,
-                pubkeyRegistrationMessageHash.Y
-            ))) % BN254.FR_MODULUS;
+        uint256 gamma = uint256(
+            keccak256(
+                abi.encodePacked(
+                    params.pubkeyRegistrationSignature.X,
+                    params.pubkeyRegistrationSignature.Y,
+                    params.pubkeyG1.X,
+                    params.pubkeyG1.Y,
+                    params.pubkeyG2.X,
+                    params.pubkeyG2.Y,
+                    pubkeyRegistrationMessageHash.X,
+                    pubkeyRegistrationMessageHash.Y
+                )
+            )
+        ) % BN254.FR_MODULUS;
 
-        // e(sigma + P * gamma, [-1]_2) = e(H(m) + [1]_1 * gamma, P') 
-        require(BN254.pairing(
-            params.pubkeyRegistrationSignature.plus(params.pubkeyG1.scalar_mul(gamma)),
-            BN254.negGeneratorG2(),
-            pubkeyRegistrationMessageHash.plus(BN254.generatorG1().scalar_mul(gamma)),
-            params.pubkeyG2
-        ), InvalidBLSSignatureOrPrivateKey());
+        // e(sigma + P * gamma, [-1]_2) = e(H(m) + [1]_1 * gamma, P')
+        require(
+            BN254.pairing(
+                params.pubkeyRegistrationSignature.plus(params.pubkeyG1.scalar_mul(gamma)),
+                BN254.negGeneratorG2(),
+                pubkeyRegistrationMessageHash.plus(BN254.generatorG1().scalar_mul(gamma)),
+                params.pubkeyG2
+            ),
+            InvalidBLSSignatureOrPrivateKey()
+        );
 
         operatorToPubkey[operator] = params.pubkeyG1;
         operatorToPubkeyHash[operator] = pubkeyHash;
@@ -145,7 +122,7 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         address operator = msg.sender;
         operatorId = getOperatorId(operator);
         require(operatorId != bytes32(0), "BLSApkRegistry.updateBLSPublicKey: operator is not registered");
-        IRegistryCoordinator __registryCoordinator = IRegistryCoordinator(registryCoordinator);
+        ISlashingRegistryCoordinator __registryCoordinator = ISlashingRegistryCoordinator(registryCoordinator);
         uint192 currentBitmap = __registryCoordinator.getCurrentQuorumBitmap(operatorId);
         bytes memory quorumNumbers = BitmapUtils.bitmapToBytesArray(currentBitmap);
         BN254.G1Point memory pubkeyRegistrationMessageHash = __registryCoordinator.pubkeyRegistrationMessageHash(operator);
@@ -203,19 +180,17 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
 
     function _processQuorumApkUpdate(bytes memory quorumNumbers, BN254.G1Point memory point) internal {
         BN254.G1Point memory newApk;
-        bytes24[] memory newApkHashes = new bytes24[](quorumNumbers.length);
 
         for (uint256 i = 0; i < quorumNumbers.length; i++) {
             // Validate quorum exists and get history length
             uint8 quorumNumber = uint8(quorumNumbers[i]);
             uint256 historyLength = apkHistory[quorumNumber].length;
-            require(historyLength != 0, "BLSApkRegistry._processQuorumApkUpdate: quorum does not exist");
+            require(historyLength != 0, QuorumDoesNotExist());
 
             // Update aggregate public key for this quorum
             newApk = currentApk[quorumNumber].plus(point);
             currentApk[quorumNumber] = newApk;
             bytes24 newApkHash = bytes24(BN254.hashG1Point(newApk));
-            newApkHashes[i] = newApkHash;
 
             // Update apk history. If the last update was made in this block, update the entry
             // Otherwise, push a new historical entry and update the prev->next pointer
@@ -224,36 +199,36 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
                 lastUpdate.apkHash = newApkHash;
             } else {
                 lastUpdate.nextUpdateBlockNumber = uint32(block.number);
-                apkHistory[quorumNumber].push(ApkUpdate({
-                apkHash : newApkHash,
-                updateBlockNumber : uint32(block.number),
-                nextUpdateBlockNumber : 0
-                }));
+                apkHistory[quorumNumber].push(
+                    ApkUpdate({
+                        apkHash: newApkHash,
+                        updateBlockNumber: uint32(block.number),
+                        nextUpdateBlockNumber: 0
+                    })
+                );
             }
         }
-        emit QuorumsAPKUpdates(quorumNumbers, newApkHashes);
     }
 
-    /*******************************************************************************
-                            VIEW FUNCTIONS
-    *******************************************************************************/
     /**
-     * @notice Returns the pubkey and pubkey hash of an operator
-     * @dev Reverts if the operator has not registered a valid pubkey
+     *
+     *                         VIEW FUNCTIONS
+     *
      */
-    function getRegisteredPubkey(address operator) public view returns (BN254.G1Point memory, bytes32) {
+
+    /// @inheritdoc IBLSApkRegistry
+    function getRegisteredPubkey(
+        address operator
+    ) public view returns (BN254.G1Point memory, bytes32) {
         BN254.G1Point memory pubkey = operatorToPubkey[operator];
-        bytes32 pubkeyHash = operatorToPubkeyHash[operator];
+        bytes32 pubkeyHash = getOperatorId(operator);
 
         require(pubkeyHash != bytes32(0), OperatorNotRegistered());
 
         return (pubkey, pubkeyHash);
     }
 
-    /**
-     * @notice Returns the indices of the quorumApks index at `blockNumber` for the provided `quorumNumbers`
-     * @dev Returns the current indices if `blockNumber >= block.number`
-     */
+    /// @inheritdoc IBLSApkRegistry
     function getApkIndicesAtBlockNumber(
         bytes calldata quorumNumbers,
         uint256 blockNumber
@@ -264,8 +239,13 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
             uint8 quorumNumber = uint8(quorumNumbers[i]);
 
             uint256 quorumApkUpdatesLength = apkHistory[quorumNumber].length;
-            if (quorumApkUpdatesLength == 0 || blockNumber < apkHistory[quorumNumber][0].updateBlockNumber) {
-                revert("BLSApkRegistry.getApkIndicesAtBlockNumber: blockNumber is before the first update");
+            if (
+                quorumApkUpdatesLength == 0
+                    || blockNumber < apkHistory[quorumNumber][0].updateBlockNumber
+            ) {
+                revert(
+                    "BLSApkRegistry.getApkIndicesAtBlockNumber: blockNumber is before the first update"
+                );
             }
 
             // Loop backward through apkHistory until we find an entry that preceeds `blockNumber`
@@ -279,23 +259,22 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
         return indices;
     }
 
-    /// @notice Returns the current APK for the provided `quorumNumber `
-    function getApk(uint8 quorumNumber) external view returns (BN254.G1Point memory) {
+    /// @inheritdoc IBLSApkRegistry
+    function getApk(
+        uint8 quorumNumber
+    ) external view returns (BN254.G1Point memory) {
         return currentApk[quorumNumber];
     }
 
-    /// @notice Returns the `ApkUpdate` struct at `index` in the list of APK updates for the `quorumNumber`
-    function getApkUpdateAtIndex(uint8 quorumNumber, uint256 index) external view returns (ApkUpdate memory) {
+    /// @inheritdoc IBLSApkRegistry
+    function getApkUpdateAtIndex(
+        uint8 quorumNumber,
+        uint256 index
+    ) external view returns (ApkUpdate memory) {
         return apkHistory[quorumNumber][index];
     }
 
-    /**
-     * @notice get hash of the apk of `quorumNumber` at `blockNumber` using the provided `index`;
-     * called by checkSignatures in BLSSignatureChecker.sol.
-     * @param quorumNumber is the quorum whose ApkHash is being retrieved
-     * @param blockNumber is the number of the block for which the latest ApkHash will be retrieved
-     * @param index is the index of the apkUpdate being retrieved from the list of quorum apkUpdates in storage
-     */
+    /// @inheritdoc IBLSApkRegistry
     function getApkHashAtBlockNumberAndIndex(
         uint8 quorumNumber,
         uint32 blockNumber,
@@ -308,12 +287,10 @@ contract BLSApkRegistry is BLSApkRegistryStorage {
          * - blockNumber should be >= the update block number
          * - the next update block number should be either 0 or strictly greater than blockNumber
          */
+        require(blockNumber >= quorumApkUpdate.updateBlockNumber, BlockNumberTooRecent());
         require(
-            blockNumber >= quorumApkUpdate.updateBlockNumber,
-            BlockNumberTooRecent()
-        );
-        require(
-            quorumApkUpdate.nextUpdateBlockNumber == 0 || blockNumber < quorumApkUpdate.nextUpdateBlockNumber,
+            quorumApkUpdate.nextUpdateBlockNumber == 0
+                || blockNumber < quorumApkUpdate.nextUpdateBlockNumber,
             BlockNumberNotLatest()
         );
 

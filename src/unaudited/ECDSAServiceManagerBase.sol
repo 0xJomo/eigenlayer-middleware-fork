@@ -2,25 +2,27 @@
 pragma solidity ^0.8.12;
 
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ISignatureUtils} from "eigenlayer-contracts/src/contracts/interfaces/ISignatureUtils.sol";
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
 import {IServiceManager} from "../interfaces/IServiceManager.sol";
 import {IServiceManagerUI} from "../interfaces/IServiceManagerUI.sol";
-import {IDelegationManager} from "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
+import {IDelegationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
 import {IStrategy} from "eigenlayer-contracts/src/contracts/interfaces/IStrategy.sol";
 import {IStakeRegistry} from "../interfaces/IStakeRegistry.sol";
-import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
-import {Quorum} from "../interfaces/IECDSAStakeRegistryEventsAndErrors.sol";
+import {IRewardsCoordinator} from
+    "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
+import {IECDSAStakeRegistryTypes} from "../interfaces/IECDSAStakeRegistry.sol";
 import {ECDSAStakeRegistry} from "../unaudited/ECDSAStakeRegistry.sol";
 import {IAVSRegistrar} from "eigenlayer-contracts/src/contracts/interfaces/IAVSRegistrar.sol";
-import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IAllocationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
 
+abstract contract ECDSAServiceManagerBase is IServiceManager, OwnableUpgradeable {
+    using SafeERC20 for IERC20;
 
-
-abstract contract ECDSAServiceManagerBase is
-    IServiceManager,
-    OwnableUpgradeable
-{
     /// @notice Address of the stake registry contract, which manages registration and stake recording.
     address public immutable stakeRegistry;
 
@@ -109,18 +111,16 @@ abstract contract ECDSAServiceManagerBase is
         _createAVSRewardsSubmission(rewardsSubmissions);
     }
 
-    /// @inheritdoc IServiceManager
     function createOperatorDirectedAVSRewardsSubmission(
-        IRewardsCoordinator.OperatorDirectedRewardsSubmission[]
-            calldata operatorDirectedRewardsSubmissions
-    ) external virtual onlyRewardsInitiator {
-        _createOperatorDirectedAVSRewardsSubmission(
+        IRewardsCoordinator.OperatorDirectedRewardsSubmission[] calldata
             operatorDirectedRewardsSubmissions
-        );
+    ) external virtual onlyRewardsInitiator {
+        _createOperatorDirectedAVSRewardsSubmission(operatorDirectedRewardsSubmissions);
     }
 
-    /// @inheritdoc IServiceManager
-    function setClaimerFor(address claimer) external virtual onlyOwner {
+    function setClaimerFor(
+        address claimer
+    ) external virtual onlyOwner {
         _setClaimerFor(claimer);
     }
 
@@ -140,12 +140,7 @@ abstract contract ECDSAServiceManagerBase is
     }
 
     /// @inheritdoc IServiceManagerUI
-    function getRestakeableStrategies()
-        external
-        view
-        virtual
-        returns (address[] memory)
-    {
+    function getRestakeableStrategies() external view virtual returns (address[] memory) {
         return _getRestakeableStrategies();
     }
 
@@ -177,10 +172,7 @@ abstract contract ECDSAServiceManagerBase is
         address operator,
         ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature
     ) internal virtual {
-        IAVSDirectory(avsDirectory).registerOperatorToAVS(
-            operator,
-            operatorSignature
-        );
+        IAVSDirectory(avsDirectory).registerOperatorToAVS(operator, operatorSignature);
     }
 
     /**
@@ -188,7 +180,9 @@ abstract contract ECDSAServiceManagerBase is
      * @dev This internal function is a proxy to the `deregisterOperatorFromAVS` function of the AVSDirectory contract.
      * @param operator The address of the operator to deregister.
      */
-    function _deregisterOperatorFromAVS(address operator) internal virtual {
+    function _deregisterOperatorFromAVS(
+        address operator
+    ) internal virtual {
         IAVSDirectory(avsDirectory).deregisterOperatorFromAVS(operator);
     }
 
@@ -201,18 +195,11 @@ abstract contract ECDSAServiceManagerBase is
         IRewardsCoordinator.RewardsSubmission[] calldata rewardsSubmissions
     ) internal virtual {
         for (uint256 i = 0; i < rewardsSubmissions.length; ++i) {
-            rewardsSubmissions[i].token.transferFrom(
-                msg.sender,
-                address(this),
-                rewardsSubmissions[i].amount
+            rewardsSubmissions[i].token.safeTransferFrom(
+                msg.sender, address(this), rewardsSubmissions[i].amount
             );
-            uint256 allowance = rewardsSubmissions[i].token.allowance(
-                address(this),
-                rewardsCoordinator
-            );
-            rewardsSubmissions[i].token.approve(
-                rewardsCoordinator,
-                rewardsSubmissions[i].amount + allowance
+            rewardsSubmissions[i].token.safeIncreaseAllowance(
+                rewardsCoordinator, rewardsSubmissions[i].amount
             );
         }
 
@@ -220,17 +207,55 @@ abstract contract ECDSAServiceManagerBase is
     }
 
     /**
+     * @notice Creates a new operator-directed rewards submission, to be split amongst the operators and
+     * set of stakers delegated to operators who are registered to this `avs`.
+     * @param operatorDirectedRewardsSubmissions The operator-directed rewards submissions being created.
+     */
+    function _createOperatorDirectedAVSRewardsSubmission(
+        IRewardsCoordinator.OperatorDirectedRewardsSubmission[] calldata
+            operatorDirectedRewardsSubmissions
+    ) internal virtual {
+        for (uint256 i = 0; i < operatorDirectedRewardsSubmissions.length; ++i) {
+            // Calculate total amount of token to transfer
+            uint256 totalAmount = 0;
+            for (
+                uint256 j = 0; j < operatorDirectedRewardsSubmissions[i].operatorRewards.length; ++j
+            ) {
+                totalAmount += operatorDirectedRewardsSubmissions[i].operatorRewards[j].amount;
+            }
+
+            // Transfer token to ServiceManager and approve RewardsCoordinator to transfer again
+            // in createOperatorDirectedAVSRewardsSubmission() call
+            operatorDirectedRewardsSubmissions[i].token.safeTransferFrom(
+                msg.sender, address(this), totalAmount
+            );
+            operatorDirectedRewardsSubmissions[i].token.safeIncreaseAllowance(
+                rewardsCoordinator, totalAmount
+            );
+        }
+
+        IRewardsCoordinator(rewardsCoordinator).createOperatorDirectedAVSRewardsSubmission(
+            address(this), operatorDirectedRewardsSubmissions
+        );
+    }
+
+    /**
+     * @notice Forwards a call to Eigenlayer's RewardsCoordinator contract to set the address of the entity that can call `processClaim` on behalf of this contract.
+     * @param claimer The address of the entity that can call `processClaim` on behalf of the earner.
+     */
+    function _setClaimerFor(
+        address claimer
+    ) internal virtual {
+        IRewardsCoordinator(rewardsCoordinator).setClaimerFor(claimer);
+    }
+
+    /**
      * @notice Retrieves the addresses of all strategies that are part of the current quorum.
      * @dev Fetches the quorum configuration from the ECDSAStakeRegistry and extracts the strategy addresses.
      * @return strategies An array of addresses representing the strategies in the current quorum.
      */
-    function _getRestakeableStrategies()
-        internal
-        view
-        virtual
-        returns (address[] memory)
-    {
-        Quorum memory quorum = ECDSAStakeRegistry(stakeRegistry).quorum();
+    function _getRestakeableStrategies() internal view virtual returns (address[] memory) {
+        IECDSAStakeRegistryTypes.Quorum memory quorum = ECDSAStakeRegistry(stakeRegistry).quorum();
         address[] memory strategies = new address[](quorum.strategies.length);
         for (uint256 i = 0; i < quorum.strategies.length; i++) {
             strategies[i] = address(quorum.strategies[i].strategy);
@@ -243,7 +268,9 @@ abstract contract ECDSAServiceManagerBase is
      * @param registrar The new AVS registrar address
      * @dev Only callable by the registry coordinator
      */
-    function setAVSRegistrar(IAVSRegistrar registrar) external onlyOwner {
+    function setAVSRegistrar(
+        IAVSRegistrar registrar
+    ) external onlyOwner {
         IAllocationManager(allocationManager).setAVSRegistrar(address(this), registrar);
     }
 
@@ -257,16 +284,15 @@ abstract contract ECDSAServiceManagerBase is
     function _getOperatorRestakedStrategies(
         address _operator
     ) internal view virtual returns (address[] memory) {
-        Quorum memory quorum = ECDSAStakeRegistry(stakeRegistry).quorum();
+        IECDSAStakeRegistryTypes.Quorum memory quorum = ECDSAStakeRegistry(stakeRegistry).quorum();
         uint256 count = quorum.strategies.length;
         IStrategy[] memory strategies = new IStrategy[](count);
         for (uint256 i; i < count; i++) {
             strategies[i] = quorum.strategies[i].strategy;
         }
-        uint256[] memory shares = IDelegationManager(delegationManager)
-            .getOperatorShares(_operator, strategies);
+        uint256[] memory shares =
+            IDelegationManager(delegationManager).getOperatorShares(_operator, strategies);
 
-        address[] memory activeStrategies = new address[](count);
         uint256 activeCount;
         for (uint256 i; i < count; i++) {
             if (shares[i] > 0) {
@@ -298,7 +324,9 @@ abstract contract ECDSAServiceManagerBase is
         _setRewardsInitiator(newRewardsInitiator);
     }
 
-    function _setRewardsInitiator(address newRewardsInitiator) internal {
+    function _setRewardsInitiator(
+        address newRewardsInitiator
+    ) internal {
         emit RewardsInitiatorUpdated(rewardsInitiator, newRewardsInitiator);
         rewardsInitiator = newRewardsInitiator;
     }

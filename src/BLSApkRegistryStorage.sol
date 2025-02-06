@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.12;
 
-import {IBLSApkRegistry} from "./interfaces/IBLSApkRegistry.sol";
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {IBLSApkRegistry, IBLSApkRegistryTypes} from "./interfaces/IBLSApkRegistry.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 
 import {Initializable} from "@openzeppelin-upgrades/contracts/proxy/utils/Initializable.sol";
 
@@ -15,22 +15,26 @@ abstract contract BLSApkRegistryStorage is Initializable, IBLSApkRegistry {
     /// @notice the registry coordinator contract
     address public immutable registryCoordinator;
 
-    // storage for individual pubkeys
-    /// @notice maps operator address to pubkey hash
-    mapping(address => bytes32) public operatorToPubkeyHash;
-    /// @notice maps pubkey hash to operator address
-    mapping(bytes32 => address) public pubkeyHashToOperator;
-    /// @notice maps operator address to pubkeyG1
-    mapping(address => BN254.G1Point) public operatorToPubkey;
+    /// INDIVIDUAL PUBLIC KEY STORAGE
 
-    // storage for aggregate pubkeys (APKs)
-    /// @notice maps quorumNumber => historical aggregate pubkey updates
-    mapping(uint8 => ApkUpdate[]) public apkHistory;
-    /// @notice maps quorumNumber => current aggregate pubkey of quorum
-    mapping(uint8 => BN254.G1Point) public currentApk;
+    /// @inheritdoc IBLSApkRegistry
+    mapping(address operator => bytes32 operatorId) public operatorToPubkeyHash;
+    /// @inheritdoc IBLSApkRegistry
+    mapping(bytes32 pubkeyHash => address operator) public pubkeyHashToOperator;
+    /// @inheritdoc IBLSApkRegistry
+    mapping(address operator => BN254.G1Point pubkeyG1) public operatorToPubkey;
 
-    constructor(IRegistryCoordinator _registryCoordinator) {
-        registryCoordinator = address(_registryCoordinator);
+    /// AGGREGATE PUBLIC KEY STORAGE
+
+    /// @inheritdoc IBLSApkRegistry
+    mapping(uint8 quorumNumber => IBLSApkRegistryTypes.ApkUpdate[]) public apkHistory;
+    /// @inheritdoc IBLSApkRegistry
+    mapping(uint8 quorumNumber => BN254.G1Point) public currentApk;
+
+    constructor(
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator
+    ) {
+        registryCoordinator = address(_slashingRegistryCoordinator);
         // disable initializers so that the implementation contract cannot be initialized
         _disableInitializers();
     }

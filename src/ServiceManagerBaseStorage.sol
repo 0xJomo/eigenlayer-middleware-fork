@@ -4,12 +4,18 @@ pragma solidity ^0.8.12;
 import {OwnableUpgradeable} from "@openzeppelin-upgrades/contracts/access/OwnableUpgradeable.sol";
 
 import {IServiceManager} from "./interfaces/IServiceManager.sol";
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry} from "./interfaces/IStakeRegistry.sol";
 
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
-import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
-import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IAllocationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IRewardsCoordinator} from
+    "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
+import {IAllocationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IPermissionController} from
+    "eigenlayer-contracts/src/contracts/interfaces/IPermissionController.sol";
 
 /**
  * @title Storage variables for the `ServiceManagerBase` contract.
@@ -23,10 +29,11 @@ abstract contract ServiceManagerBaseStorage is IServiceManager, OwnableUpgradeab
      *
      */
     IAVSDirectory internal immutable _avsDirectory;
-    IRewardsCoordinator internal immutable _rewardsCoordinator;
-    IRegistryCoordinator internal immutable _registryCoordinator;
-    IStakeRegistry internal immutable _stakeRegistry;
     IAllocationManager internal immutable _allocationManager;
+    IRewardsCoordinator internal immutable _rewardsCoordinator;
+    ISlashingRegistryCoordinator internal immutable _registryCoordinator;
+    IStakeRegistry internal immutable _stakeRegistry;
+    IPermissionController internal immutable _permissionController;
 
     /**
      *
@@ -53,14 +60,16 @@ abstract contract ServiceManagerBaseStorage is IServiceManager, OwnableUpgradeab
     constructor(
         IAVSDirectory __avsDirectory,
         IRewardsCoordinator __rewardsCoordinator,
-        IRegistryCoordinator __registryCoordinator,
+        ISlashingRegistryCoordinator __registryCoordinator,
         IStakeRegistry __stakeRegistry,
+        IPermissionController __permissionController,
         IAllocationManager __allocationManager
     ) {
         _avsDirectory = __avsDirectory;
         _rewardsCoordinator = __rewardsCoordinator;
         _registryCoordinator = __registryCoordinator;
         _stakeRegistry = __stakeRegistry;
+        _permissionController = __permissionController;
         _allocationManager = __allocationManager;
     }
 

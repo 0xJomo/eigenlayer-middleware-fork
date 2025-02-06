@@ -11,17 +11,25 @@ import {BitmapUtils} from "../../src/libraries/BitmapUtils.sol";
 import {BN254} from "../../src/libraries/BN254.sol";
 
 import {OperatorStateRetriever} from "../../src/OperatorStateRetriever.sol";
+import {SlashingRegistryCoordinator} from "../../src/SlashingRegistryCoordinator.sol";
 import {RegistryCoordinator} from "../../src/RegistryCoordinator.sol";
 import {RegistryCoordinatorHarness} from "../harnesses/RegistryCoordinatorHarness.t.sol";
 import {BLSApkRegistry} from "../../src/BLSApkRegistry.sol";
 import {ServiceManagerMock} from "../mocks/ServiceManagerMock.sol";
-import {StakeRegistry, StakeType} from "../../src/StakeRegistry.sol";
+import {StakeRegistry, IStakeRegistryTypes} from "../../src/StakeRegistry.sol";
 import {IndexRegistry} from "../../src/IndexRegistry.sol";
 import {IBLSApkRegistry} from "../../src/interfaces/IBLSApkRegistry.sol";
 import {IStakeRegistry} from "../../src/interfaces/IStakeRegistry.sol";
 import {IIndexRegistry} from "../../src/interfaces/IIndexRegistry.sol";
 import {IRegistryCoordinator} from "../../src/interfaces/IRegistryCoordinator.sol";
+import {
+    ISlashingRegistryCoordinatorTypes,
+    ISlashingRegistryCoordinatorTypes
+} from "../../src/interfaces/ISlashingRegistryCoordinator.sol";
+
+import {ISlashingRegistryCoordinator} from "../../src/interfaces/ISlashingRegistryCoordinator.sol";
 import {IServiceManager} from "../../src/interfaces/IServiceManager.sol";
+import {SocketRegistry} from "../../src/SocketRegistry.sol";
 
 import {StrategyManagerMock} from "eigenlayer-contracts/src/test/mocks/StrategyManagerMock.sol";
 import {EigenPodManagerMock} from "../mocks/EigenPodManagerMock.sol";
@@ -35,7 +43,8 @@ import {RewardsCoordinatorMock} from "../mocks/RewardsCoordinatorMock.sol";
 import {PermissionControllerMock} from "../mocks/PermissionControllerMock.sol";
 
 import {RewardsCoordinator} from "eigenlayer-contracts/src/contracts/core/RewardsCoordinator.sol";
-import {PermissionController} from "eigenlayer-contracts/src/contracts/permissions/PermissionController.sol";
+import {PermissionController} from
+    "eigenlayer-contracts/src/contracts/permissions/PermissionController.sol";
 import {AllocationManager} from "eigenlayer-contracts/src/contracts/core/AllocationManager.sol";
 import {IRewardsCoordinator} from
     "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
@@ -62,12 +71,14 @@ contract MockAVSDeployer is Test {
     IBLSApkRegistry public blsApkRegistryImplementation;
     IIndexRegistry public indexRegistryImplementation;
     ServiceManagerMock public serviceManagerImplementation;
+    SocketRegistry public socketRegistryImplementation;
 
     OperatorStateRetriever public operatorStateRetriever;
     RegistryCoordinatorHarness public registryCoordinator;
     StakeRegistryHarness public stakeRegistry;
     BLSApkRegistryHarness public blsApkRegistry;
     IIndexRegistry public indexRegistry;
+    SocketRegistry public socketRegistry;
     ServiceManagerMock public serviceManager;
 
     StrategyManagerMock public strategyManagerMock;
@@ -102,19 +113,19 @@ contract MockAVSDeployer is Test {
     address defaultOperator = address(uint160(uint256(keccak256("defaultOperator"))));
     bytes32 defaultOperatorId;
     BN254.G1Point internal defaultPubKey = BN254.G1Point(
-        18_260_007_818_883_133_054_078_754_218_619_977_578_772_505_796_600_400_998_181_738_095_793_040_006_897,
-        3_432_351_341_799_135_763_167_709_827_653_955_074_218_841_517_684_851_694_584_291_831_827_675_065_899
+        18260007818883133054078754218619977578772505796600400998181738095793040006897,
+        3432351341799135763167709827653955074218841517684851694584291831827675065899
     );
     string defaultSocket = "69.69.69.69:420";
     uint96 defaultStake = 1 ether;
     uint8 defaultQuorumNumber = 0;
 
     uint32 defaultMaxOperatorCount = 10;
-    uint16 defaultKickBIPsOfOperatorStake = 15_000;
+    uint16 defaultKickBIPsOfOperatorStake = 15000;
     uint16 defaultKickBIPsOfTotalStake = 150;
     uint8 numQuorums = 192;
 
-    IRegistryCoordinator.OperatorSetParam[] operatorSetParams;
+    ISlashingRegistryCoordinatorTypes.OperatorSetParam[] operatorSetParams;
 
     uint8 maxQuorumsToRegisterFor = 4;
     uint256 maxOperatorsToRegister = 4;
@@ -137,7 +148,9 @@ contract MockAVSDeployer is Test {
         _deployMockEigenLayerAndAVS(numQuorums);
     }
 
-    function _deployMockEigenLayerAndAVS(uint8 numQuorumsToAdd) internal {
+    function _deployMockEigenLayerAndAVS(
+        uint8 numQuorumsToAdd
+    ) internal {
         emptyContract = new EmptyContract();
         defaultOperatorId = defaultPubKey.hashG1Point();
 
@@ -201,15 +214,32 @@ contract MockAVSDeployer is Test {
                 new TransparentUpgradeableProxy(address(emptyContract), address(proxyAdmin), "")
             )
         );
+
+        socketRegistry = SocketRegistry(
+            address(
+                new TransparentUpgradeableProxy(address(emptyContract), address(proxyAdmin), "")
+            )
+        );
         cheats.stopPrank();
 
         cheats.startPrank(proxyAdminOwner);
 
-        stakeRegistryImplementation =
-            new StakeRegistryHarness(IRegistryCoordinator(registryCoordinator), delegationMock, avsDirectory, serviceManager);
+        stakeRegistryImplementation = new StakeRegistryHarness(
+            ISlashingRegistryCoordinator(registryCoordinator),
+            delegationMock,
+            avsDirectory,
+            allocationManagerMock
+        );
         proxyAdmin.upgrade(
             TransparentUpgradeableProxy(payable(address(stakeRegistry))),
             address(stakeRegistryImplementation)
+        );
+
+        socketRegistryImplementation = new SocketRegistry(registryCoordinator);
+
+        proxyAdmin.upgrade(
+            TransparentUpgradeableProxy(payable(address(socketRegistry))),
+            address(socketRegistryImplementation)
         );
 
         blsApkRegistryImplementation = new BLSApkRegistryHarness(registryCoordinator);
@@ -229,7 +259,8 @@ contract MockAVSDeployer is Test {
             IRewardsCoordinator(address(rewardsCoordinatorMock)),
             registryCoordinator,
             stakeRegistry,
-            allocationManager
+            permissionControllerMock,
+            allocationManagerMock
         );
         proxyAdmin.upgrade(
             TransparentUpgradeableProxy(payable(address(serviceManager))),
@@ -241,7 +272,7 @@ contract MockAVSDeployer is Test {
             pauserRegistry,
             permissionControllerMock,
             uint32(7 days), // DEALLOCATION_DELAY
-            uint32(1 days)  // ALLOCATION_CONFIGURATION_DELAY
+            uint32(1 days) // ALLOCATION_CONFIGURATION_DELAY
         );
         proxyAdmin.upgrade(
             TransparentUpgradeableProxy(payable(address(allocationManager))),
@@ -250,8 +281,7 @@ contract MockAVSDeployer is Test {
 
         serviceManager.initialize({
             initialOwner: registryCoordinatorOwner,
-            rewardsInitiator: proxyAdminOwner,
-            slasher: proxyAdminOwner
+            rewardsInitiator: proxyAdminOwner
         });
 
         // set the public key for an operator, using harnessed function to bypass checks
@@ -264,24 +294,46 @@ contract MockAVSDeployer is Test {
         }
 
         // setup the dummy quorum strategies
-        IStakeRegistry.StrategyParams[][] memory quorumStrategiesConsideredAndMultipliers =
-            new IStakeRegistry.StrategyParams[][](numQuorumsToAdd);
+        IStakeRegistryTypes.StrategyParams[][] memory quorumStrategiesConsideredAndMultipliers =
+            new IStakeRegistryTypes.StrategyParams[][](numQuorumsToAdd);
         for (uint256 i = 0; i < quorumStrategiesConsideredAndMultipliers.length; i++) {
-            quorumStrategiesConsideredAndMultipliers[i] = new IStakeRegistry.StrategyParams[](1);
-            quorumStrategiesConsideredAndMultipliers[i][0] = IStakeRegistry.StrategyParams(
+            quorumStrategiesConsideredAndMultipliers[i] =
+                new IStakeRegistryTypes.StrategyParams[](1);
+            quorumStrategiesConsideredAndMultipliers[i][0] = IStakeRegistryTypes.StrategyParams(
                 IStrategy(address(uint160(i))), uint96(WEIGHTING_DIVISOR)
             );
         }
 
         registryCoordinatorImplementation = new RegistryCoordinatorHarness(
-            serviceManager, stakeRegistry, blsApkRegistry, indexRegistry, pauserRegistry
+            serviceManager,
+            stakeRegistry,
+            blsApkRegistry,
+            indexRegistry,
+            socketRegistry,
+            allocationManagerMock,
+            pauserRegistry
         );
         {
+            proxyAdmin.upgradeAndCall(
+                TransparentUpgradeableProxy(payable(address(registryCoordinator))),
+                address(registryCoordinatorImplementation),
+                abi.encodeCall(
+                    SlashingRegistryCoordinator.initialize,
+                    (
+                        registryCoordinatorOwner, // _initialOwner
+                        churnApprover, // _churnApprover
+                        ejector, // _ejector
+                        0, // _initialPausedStatus
+                        address(serviceManager) // _accountIdentifier
+                    )
+                )
+            );
+
             delete operatorSetParams;
             for (uint256 i = 0; i < numQuorumsToAdd; i++) {
                 // hard code these for now
                 operatorSetParams.push(
-                    IRegistryCoordinator.OperatorSetParam({
+                    ISlashingRegistryCoordinatorTypes.OperatorSetParam({
                         maxOperatorCount: defaultMaxOperatorCount,
                         kickBIPsOfOperatorStake: defaultKickBIPsOfOperatorStake,
                         kickBIPsOfTotalStake: defaultKickBIPsOfTotalStake
@@ -289,38 +341,23 @@ contract MockAVSDeployer is Test {
                 );
             }
 
-            // Create arrays for quorum types and lookahead periods
-            StakeType[] memory quorumStakeTypes = new StakeType[](numQuorumsToAdd);
-            uint32[] memory slashableStakeQuorumLookAheadPeriods = new uint32[](numQuorumsToAdd);
+            cheats.stopPrank();
 
-            // Set all quorums to TOTAL_DELEGATED type with 0 lookahead period
+            // add TOTAL_DELEGATED stake type quorums
             for (uint256 i = 0; i < numQuorumsToAdd; i++) {
-                quorumStakeTypes[i] = StakeType.TOTAL_DELEGATED;
-                slashableStakeQuorumLookAheadPeriods[i] = 0;
+                cheats.prank(registryCoordinator.owner());
+                registryCoordinator.createTotalDelegatedStakeQuorum(
+                    operatorSetParams[i],
+                    minimumStakeForQuorum[i],
+                    quorumStrategiesConsideredAndMultipliers[i]
+                );
             }
-
-            proxyAdmin.upgradeAndCall(
-                TransparentUpgradeableProxy(payable(address(registryCoordinator))),
-                address(registryCoordinatorImplementation),
-                abi.encodeCall(
-                    RegistryCoordinator.initialize,
-                    (
-                        registryCoordinatorOwner, // _initialOwner
-                        churnApprover, // _churnApprover
-                        ejector, // _ejector
-                        0, // _initialPausedStatus
-                        operatorSetParams, // _operatorSetParams
-                        minimumStakeForQuorum, // _minimumStakes
-                        quorumStrategiesConsideredAndMultipliers, // _strategyParams
-                        quorumStakeTypes, // _stakeTypes
-                        slashableStakeQuorumLookAheadPeriods // _lookAheadPeriods
-                    )
-                ));
         }
 
         operatorStateRetriever = new OperatorStateRetriever();
 
-        cheats.stopPrank();
+        registryCoordinator.setOperatorSetsEnabled(false);
+        registryCoordinator.setM2QuorumsDisabled(false);
     }
 
     function _labelContracts() internal {
@@ -411,10 +448,9 @@ contract MockAVSDeployer is Test {
         );
     }
 
-    function _registerRandomOperators(uint256 pseudoRandomNumber)
-        internal
-        returns (OperatorMetadata[] memory, uint256[][] memory)
-    {
+    function _registerRandomOperators(
+        uint256 pseudoRandomNumber
+    ) internal returns (OperatorMetadata[] memory, uint256[][] memory) {
         OperatorMetadata[] memory operatorMetadatas = new OperatorMetadata[](maxOperatorsToRegister);
         for (uint256 i = 0; i < operatorMetadatas.length; i++) {
             // limit to 16 quorums so we don't run out of gas, make them all register for quorum 0 as well
@@ -497,7 +533,7 @@ contract MockAVSDeployer is Test {
     function _signOperatorChurnApproval(
         address registeringOperator,
         bytes32 registeringOperatorId,
-        IRegistryCoordinator.OperatorKickParam[] memory operatorKickParams,
+        ISlashingRegistryCoordinator.OperatorKickParam[] memory operatorKickParams,
         bytes32 salt,
         uint256 expiry
     ) internal view returns (ISignatureUtils.SignatureWithSaltAndExpiry memory) {

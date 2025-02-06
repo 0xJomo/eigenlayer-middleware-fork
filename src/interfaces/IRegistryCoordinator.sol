@@ -1,193 +1,123 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.12;
 
+import {
+    ISlashingRegistryCoordinator,
+    ISlashingRegistryCoordinatorErrors,
+    ISlashingRegistryCoordinatorEvents,
+    ISlashingRegistryCoordinatorTypes
+} from "./ISlashingRegistryCoordinator.sol";
+import {ISignatureUtils} from "eigenlayer-contracts/src/contracts/interfaces/ISignatureUtils.sol";
+import {IBLSApkRegistryTypes} from "./IBLSApkRegistry.sol";
 import {IServiceManager} from "./IServiceManager.sol";
-import {IBLSApkRegistry} from "./IBLSApkRegistry.sol";
-import {IStakeRegistry} from "./IStakeRegistry.sol";
-import {IIndexRegistry} from "./IIndexRegistry.sol";
-import {BN254} from "../libraries/BN254.sol";
 
-interface IRegistryCoordinatorErrors {
-    error InputLengthMismatch();
-    error OperatorSetsEnabled();
-    error OperatorSetsNotEnabled();
-    error OperatorSetsNotSupported();
-    error OnlyAllocationManager();
-    error OnlyEjector();
-    error QuorumDoesNotExist();
-    error BitmapEmpty();
-    error AlreadyRegisteredForQuorums();
-    error CannotReregisterYet();
-    error NotRegistered();
-    error CannotChurnSelf();
-    error QuorumOperatorCountMismatch();
-    error InsufficientStakeForChurn();
-    error CannotKickOperatorAboveThreshold();
-    error BitmapCannotBeZero();
-    error NotRegisteredForQuorum();
-    error MaxQuorumsReached();
-    error SaltAlreadyUsed();
-    error RegistryCoordinatorSignatureExpired();
-    error ChurnApproverSaltUsed();
-    error NotSorted();
+interface IRegistryCoordinatorErrors is ISlashingRegistryCoordinatorErrors {
+    /// @notice Thrown when operator sets mode is already enabled.
+    error OperatorSetsAlreadyEnabled();
+    /// @notice Thrown when a quorum is an operator set quorum.
+    error OperatorSetQuorum();
+    /// @notice Thrown when M2 quorums are already disabled.
+    error M2QuorumsAlreadyDisabled();
 }
-/**
- * @title Interface for a contract that coordinates between various registries for an AVS.
- * @author Layr Labs, Inc.
- */
-interface IRegistryCoordinator is IRegistryCoordinatorErrors{
-    // EVENTS
 
-    /// Emits when an operator is registered
-    event OperatorRegistered(address indexed operator, bytes32 indexed operatorId);
+interface IRegistryCoordinatorTypes is ISlashingRegistryCoordinatorTypes {}
 
-    /// Emits when an operator is deregistered
-    event OperatorDeregistered(address indexed operator, bytes32 indexed operatorId);
-
-    event OperatorSetParamsUpdated(uint8 indexed quorumNumber, OperatorSetParam operatorSetParams);
-
-    event ChurnApproverUpdated(address prevChurnApprover, address newChurnApprover);
-
-    event EjectorUpdated(address prevEjector, address newEjector);
-
-    event QuorumCountUpdated(uint8 quorumCount);
-
-    event OperatorQuorumBitmapUpdated(bytes32 operatorId, uint192 quorumBitmap);
-
-    /// @notice emitted when all the operators for a quorum are updated at once
-    event QuorumBlockNumberUpdated(uint8 indexed quorumNumber, uint256 blocknumber);
-
-    // DATA STRUCTURES
-    enum OperatorStatus
-    {
-        // default is NEVER_REGISTERED
-        NEVER_REGISTERED,
-        REGISTERED,
-        DEREGISTERED
-    }
-
-    // STRUCTS
-
+interface IRegistryCoordinatorEvents is
+    ISlashingRegistryCoordinatorEvents,
+    IRegistryCoordinatorTypes
+{
     /**
-     * @notice Data structure for storing info on operators
+     * @notice Emitted when operator sets mode is enabled.
+     * @dev Emitted in enableOperatorSets().
      */
-    struct OperatorInfo {
-        // the id of the operator, which is likely the keccak256 hash of the operator's public key if using BLSRegistry
-        bytes32 operatorId;
-        // indicates whether the operator is actively registered for serving the middleware or not
-        OperatorStatus status;
-    }
+    event OperatorSetsEnabled();
 
     /**
-     * @notice Data structure for storing info on quorum bitmap updates where the `quorumBitmap` is the bitmap of the 
-     * quorums the operator is registered for starting at (inclusive)`updateBlockNumber` and ending at (exclusive) `nextUpdateBlockNumber`
-     * @dev nextUpdateBlockNumber is initialized to 0 for the latest update
+     * @notice Emitted when M2 quorums are disabled.
+     * @dev Emitted in disableM2QuorumRegistration().
      */
-    struct QuorumBitmapUpdate {
-        uint32 updateBlockNumber;
-        uint32 nextUpdateBlockNumber;
-        uint192 quorumBitmap;
-    }
+    event M2QuorumsDisabled();
+}
 
+interface IRegistryCoordinator is
+    IRegistryCoordinatorErrors,
+    IRegistryCoordinatorEvents,
+    ISlashingRegistryCoordinator
+{
     /**
-     * @notice Data structure for storing operator set params for a given quorum. Specifically the 
-     * `maxOperatorCount` is the maximum number of operators that can be registered for the quorum,
-     * `kickBIPsOfOperatorStake` is the basis points of a new operator needs to have of an operator they are trying to kick from the quorum,
-     * and `kickBIPsOfTotalStake` is the basis points of the total stake of the quorum that an operator needs to be below to be kicked.
-     */ 
-     struct OperatorSetParam {
-        uint32 maxOperatorCount;
-        uint16 kickBIPsOfOperatorStake;
-        uint16 kickBIPsOfTotalStake;
-    }
-
-    /**
-     * @notice Data structure for the parameters needed to kick an operator from a quorum with number `quorumNumber`, used during registration churn.
-     * `operator` is the address of the operator to kick
+     * @notice Reference to the ServiceManager contract.
+     * @return The ServiceManager contract interface.
+     * @dev This is only relevant for Pre-Slashing AVSs
      */
-    struct OperatorKickParam {
-        uint8 quorumNumber;
-        address operator;
-    }
+    function serviceManager() external view returns (IServiceManager);
 
-    /// @notice Returns the operator set params for the given `quorumNumber`
-    function getOperatorSetParams(uint8 quorumNumber) external view returns (OperatorSetParam memory);
-    /// @notice the Stake registry contract that will keep track of operators' stakes
-    function stakeRegistry() external view returns (IStakeRegistry);
-    /// @notice the BLS Aggregate Pubkey Registry contract that will keep track of operators' BLS aggregate pubkeys per quorum
-    function blsApkRegistry() external view returns (IBLSApkRegistry);
-    /// @notice the index Registry contract that will keep track of operators' indexes
-    function indexRegistry() external view returns (IIndexRegistry);
+    /// ACTIONS
 
     /**
-     * @notice Ejects the provided operator from the provided quorums from the AVS
-     * @param operator is the operator to eject
-     * @param quorumNumbers are the quorum numbers to eject the operator from
+     * @notice Registers an operator for service in specified quorums. If any quorum exceeds its maximum
+     * operator capacity after the operator is registered, this method will fail.
+     * @param quorumNumbers is an ordered byte array containing the quorum numbers being registered for AVSDirectory.
+     * @param socket is the socket of the operator (typically an IP address).
+     * @param params contains the G1 & G2 public keys of the operator, and a signature proving their ownership.
+     * @param operatorSignature is the signature of the operator used by the AVS to register the operator in the delegation manager.
+     * @dev `params` is ignored if the caller has previously registered a public key.
+     * @dev `operatorSignature` is ignored if the operator's status is already REGISTERED.
+     * @dev This function registers operators to the AVSDirectory using the M2-registration pathway.
      */
-    function ejectOperator(
-        address operator, 
-        bytes calldata quorumNumbers
+    function registerOperator(
+        bytes memory quorumNumbers,
+        string memory socket,
+        IBLSApkRegistryTypes.PubkeyRegistrationParams memory params,
+        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature,
+        address operatorSignAddr
     ) external;
 
-    /// @notice Returns the number of quorums the registry coordinator has created
-    function quorumCount() external view returns (uint8);
-
-    /// @notice Returns the operator struct for the given `operator`
-    function getOperator(address operator) external view returns (OperatorInfo memory);
-
-    /// @notice Returns the operatorId for the given `operator`
-    function getOperatorId(address operator) external view returns (bytes32);
-
-    /// @notice Returns the operator address for the given `operatorId`
-    function getOperatorFromId(bytes32 operatorId) external view returns (address operator);
-
-    /// @notice Returns the status for the given `operator`
-    function getOperatorStatus(address operator) external view returns (IRegistryCoordinator.OperatorStatus);
-
-    /// @notice Returns the indices of the quorumBitmaps for the provided `operatorIds` at the given `blockNumber`
-    function getQuorumBitmapIndicesAtBlockNumber(uint32 blockNumber, bytes32[] memory operatorIds) external view returns (uint32[] memory);
-
     /**
-     * @notice Returns the quorum bitmap for the given `operatorId` at the given `blockNumber` via the `index`
-     * @dev reverts if `index` is incorrect 
-     */ 
-    function getQuorumBitmapAtBlockNumberByIndex(bytes32 operatorId, uint32 blockNumber, uint256 index) external view returns (uint192);
-
-    /// @notice Returns the `index`th entry in the operator with `operatorId`'s bitmap history
-    function getQuorumBitmapUpdateByIndex(bytes32 operatorId, uint256 index) external view returns (QuorumBitmapUpdate memory);
-
-    /// @notice Returns the current quorum bitmap for the given `operatorId`
-    function getCurrentQuorumBitmap(bytes32 operatorId) external view returns (uint192);
-
-    /// @notice Returns the length of the quorum bitmap history for the given `operatorId`
-    function getQuorumBitmapHistoryLength(bytes32 operatorId) external view returns (uint256);
-
-    /// @notice Returns the registry at the desired index
-    function registries(uint256) external view returns (address);
-
-    /// @notice Returns the number of registries
-    function numRegistries() external view returns (uint256);
-
-    /// @notice Returns whether a quorum is an M2 quorum
-    /// @param quorumNumber The quorum number to check
-    /// @return True if the quorum is an M2 quorum
-    function isM2Quorum(uint8 quorumNumber) external view returns (bool);
-
-    /// @notice Returns whether the AVS is an operator set AVS
-    /// @return True if the AVS is an operator set AVS
-    function isOperatorSetAVS() external view returns (bool);
-
-    /**
-     * @notice Returns the message hash that an operator must sign to register their BLS public key.
-     * @param operator is the address of the operator registering their BLS public key
+     * @notice Registers an operator while replacing existing operators in full quorums. If any quorum reaches its maximum operator
+     * capacity, `operatorKickParams` is used to replace an old operator with the new one.
+     * @param quorumNumbers is an ordered byte array containing the quorum numbers being registered for AVSDirectory.
+     * @param socket is the socket of the operator (typically an IP address).
+     * @param params contains the G1 & G2 public keys of the operator, and a signature proving their ownership.
+     * @param operatorKickParams used to determine which operator is removed to maintain quorum capacity as the
+     * operator registers for quorums.
+     * @param churnApproverSignature is the signature of the churnApprover over the `operatorKickParams`.
+     * @param operatorSignature is the signature of the operator used by the AVS to register the operator in the delegation manager.
+     * @dev `params` is ignored if the caller has previously registered a public key.
+     * @dev `operatorSignature` is ignored if the operator's status is already REGISTERED.
+     * @dev This function registers operators to the AVSDirectory using the M2-registration pathway.
      */
-    function pubkeyRegistrationMessageHash(address operator) external view returns (BN254.G1Point memory);
+    function registerOperatorWithChurn(
+        bytes calldata quorumNumbers,
+        string memory socket,
+        IBLSApkRegistryTypes.PubkeyRegistrationParams memory params,
+        OperatorKickParam[] memory operatorKickParams,
+        ISignatureUtils.SignatureWithSaltAndExpiry memory churnApproverSignature,
+        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature,
+        address operatorSignAddr
+    ) external;
 
-    /// @notice returns the blocknumber the quorum was last updated all at once for all operators
-    function quorumUpdateBlockNumber(uint8 quorumNumber) external view returns (uint256);
+    /**
+     * @notice Deregisters the caller from one or more quorums. The operator will be removed from all registry contracts
+     * and their quorum bitmap will be updated accordingly. If the operator is deregistered from all quorums, their status
+     * will be updated to DEREGISTERED.
+     * @param quorumNumbers is an ordered byte array containing the quorum numbers being deregistered from.
+     * @dev Will revert if operator is not currently registered for any of the specified quorums.
+     * @dev This function deregisters operators from the AVSDirectory using the M2-registration pathway.
+     */
+    function deregisterOperator(
+        bytes memory quorumNumbers
+    ) external;
 
-    /// @notice The owner of the registry coordinator
-    function owner() external view returns (address);
+    /**
+     * @notice Enables operator sets mode for the AVS. Once enabled, this cannot be disabled.
+     * @dev When enabled, all existing quorums are marked as M2 quorums and future quorums must be explicitly
+     * created as either M2 or operator set quorums.
+     */
+    function enableOperatorSets() external;
 
-    function serviceManager() external view returns (IServiceManager);
+    /**
+     * @notice Disables M2 quorum registration for the AVS. Once disabled, this cannot be enabled.
+     * @dev When disabled, all registrations to M2 quorums will revert. Deregistrations are still possible.
+     */
+    function disableM2QuorumRegistration() external;
 }

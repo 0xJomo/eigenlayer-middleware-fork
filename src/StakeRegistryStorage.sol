@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.12;
 
-import {IDelegationManager} from "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
+import {IDelegationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
-import {IServiceManager} from "./interfaces/IServiceManager.sol";
-import {IStrategyManager, IStrategy} from "eigenlayer-contracts/src/contracts/interfaces/IStrategyManager.sol";
+import {IAllocationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {
+    IStrategyManager,
+    IStrategy
+} from "eigenlayer-contracts/src/contracts/interfaces/IStrategyManager.sol";
 
-import {IRegistryCoordinator} from "./interfaces/IRegistryCoordinator.sol";
-import {IStakeRegistry, StakeType} from  "./interfaces/IStakeRegistry.sol";
+import {ISlashingRegistryCoordinator} from "./interfaces/ISlashingRegistryCoordinator.sol";
+import {IStakeRegistry, IStakeRegistryTypes} from "./interfaces/IStakeRegistry.sol";
 
 /**
  * @title Storage variables for the `StakeRegistry` contract.
@@ -29,8 +34,8 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
     /// @notice The address of the Delegation contract for EigenLayer.
     IAVSDirectory public immutable avsDirectory;
 
-    /// @notice the address of the ServiceManager associtated with the stake registries
-    IServiceManager public immutable serviceManager;
+    /// @notice the address of the AllocationManager for EigenLayer.
+    IAllocationManager public immutable allocationManager;
 
     /// @notice the coordinator contract that this registry is associated with
     address public immutable registryCoordinator;
@@ -43,31 +48,31 @@ abstract contract StakeRegistryStorage is IStakeRegistry {
     mapping(uint8 => StakeUpdate[]) internal _totalStakeHistory;
 
     /// @notice mapping from operator's operatorId to the history of their stake updates
-    mapping(bytes32 => mapping(uint8 => StakeUpdate[])) internal operatorStakeHistory;
+    mapping(bytes32 operatorId => mapping(uint8 => StakeUpdate[])) internal operatorStakeHistory;
 
     /**
      * @notice mapping from quorum number to the list of strategies considered and their
      * corresponding multipliers for that specific quorum
      */
-    mapping(uint8 => StrategyParams[]) public strategyParams;
-    mapping(uint8 => IStrategy[]) public strategiesPerQuorum;
+    mapping(uint8 quorumNumber => StrategyParams[]) public strategyParams;
+    mapping(uint8 quorumNumber => IStrategy[]) public strategiesPerQuorum;
 
-    mapping(uint8 => StakeType) public stakeTypePerQuorum;
+    mapping(uint8 quorumNumber => IStakeRegistryTypes.StakeType) public stakeTypePerQuorum;
 
-    mapping(uint8 => uint32) public slashableStakeLookAheadPerQuorum;
+    mapping(uint8 quorumNumber => uint32) public slashableStakeLookAheadPerQuorum;
 
     mapping(address => address) public operatorSignAddrs;
 
     constructor(
-        IRegistryCoordinator _registryCoordinator,
+        ISlashingRegistryCoordinator _slashingRegistryCoordinator,
         IDelegationManager _delegationManager,
         IAVSDirectory _avsDirectory,
-        IServiceManager _serviceManager
+        IAllocationManager _allocationManager
     ) {
-        registryCoordinator = address(_registryCoordinator);
+        registryCoordinator = address(_slashingRegistryCoordinator);
         delegation = _delegationManager;
         avsDirectory = _avsDirectory;
-        serviceManager = _serviceManager;
+        allocationManager = _allocationManager;
     }
 
     // storage gap for upgradeability
